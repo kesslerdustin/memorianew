@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import Slider from '@react-native-community/slider';
 import { saveMoodEntry } from '../utils/database';
 import { AntDesign } from '@expo/vector-icons';
+import { useLanguage } from '../context/LanguageContext';
+import { useVisualStyle, VISUAL_STYLES, getRatingColor } from '../context/VisualStyleContext';
 
 const EMOTIONS = [
   { value: 'happy', label: 'Happy', emoji: '😊' },
@@ -27,10 +30,35 @@ const MOOD_SCALE = [
   { value: 5, label: 'Very Good', emoji: '🤩' },
 ];
 
-const QuickMoodEntry = ({ onMoodAdded, onDetailedEntry }) => {
+const QuickMoodEntry = ({ onMoodAdded, onDetailedEntry, visualStyle, getMoodIcon }) => {
+  const { t } = useLanguage();
+  const localVisualStyle = useVisualStyle();
+  
+  // Use provided visual style helpers or fallback to context
+  const actualGetMoodIcon = getMoodIcon || localVisualStyle.getMoodIcon;
+  const actualVisualStyle = visualStyle || localVisualStyle.visualStyle;
+  
+  // Check if smileys should be shown
+  const showSmileys = actualVisualStyle === VISUAL_STYLES.SMILEYS;
+  
+  // Check if decimal values are supported (slider style)
+  const supportsDecimal = actualVisualStyle === VISUAL_STYLES.SLIDER;
+
   const [selectedRating, setSelectedRating] = useState(null);
   const [selectedEmotion, setSelectedEmotion] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Get translated emotion label
+  const getTranslatedEmotion = (emotionValue) => {
+    const emotion = EMOTIONS.find(e => e.value === emotionValue);
+    return emotion ? t(emotion.value) : emotionValue;
+  };
+
+  // Get the mood icon based on visual style
+  const getMoodIconForRating = (rating) => {
+    const moodScale = MOOD_SCALE.find(m => m.value === rating);
+    return actualGetMoodIcon ? actualGetMoodIcon(rating) : (moodScale ? moodScale.emoji : '❓');
+  };
 
   const handleRatingSelect = (rating) => {
     setSelectedRating(rating);
@@ -40,9 +68,16 @@ const QuickMoodEntry = ({ onMoodAdded, onDetailedEntry }) => {
     setSelectedEmotion(emotion);
   };
 
+  // Handle rating change from slider
+  const handleSliderChange = (value) => {
+    // Round to one decimal place
+    const roundedValue = Math.round(value * 10) / 10;
+    setSelectedRating(roundedValue);
+  };
+
   const handleQuickSubmit = async () => {
     if (!selectedRating || !selectedEmotion) {
-      alert('Please select both a rating and an emotion');
+      alert(t('selectRatingAndEmotion'));
       return;
     }
 
@@ -68,7 +103,7 @@ const QuickMoodEntry = ({ onMoodAdded, onDetailedEntry }) => {
       }
     } catch (error) {
       console.error('Error saving mood:', error);
-      alert('Failed to save your mood entry');
+      alert(t('failedToSaveMood'));
     } finally {
       setSubmitting(false);
     }
@@ -76,7 +111,7 @@ const QuickMoodEntry = ({ onMoodAdded, onDetailedEntry }) => {
 
   const handleDetailedEntry = () => {
     if (!selectedRating) {
-      alert('Please select a mood rating first');
+      alert(t('selectRatingFirst'));
       return;
     }
     
@@ -85,12 +120,68 @@ const QuickMoodEntry = ({ onMoodAdded, onDetailedEntry }) => {
     }
   };
 
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>How are you feeling right now?</Text>
-      
-      <View style={styles.ratingContainer}>
-        <Text style={styles.sectionTitle}>Your mood today</Text>
+  const renderEmotionItem = (emotion) => {
+    return (
+      <TouchableOpacity
+        key={emotion.value}
+        style={[
+          styles.emotionButton,
+          selectedEmotion === emotion.value && styles.selectedEmotion
+        ]}
+        onPress={() => handleEmotionSelect(emotion.value)}
+      >
+        {showSmileys && (
+          <Text style={styles.emoji}>{emotion.emoji}</Text>
+        )}
+        <Text style={[
+          styles.emotionText,
+          !showSmileys && styles.noEmojiEmotionText
+        ]}>
+          {t(emotion.value)}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
+  
+  // Render the appropriate rating selector based on visual style
+  const renderRatingSelector = () => {
+    if (supportsDecimal) {
+      // For slider visual style, render a slider
+      return (
+        <View style={styles.sliderContainer}>
+          <Text style={styles.sectionTitle}>{t('yourMoodToday')}</Text>
+          
+          <Slider
+            style={styles.slider}
+            minimumValue={1}
+            maximumValue={5}
+            step={0.1}
+            value={selectedRating || 3}
+            onValueChange={handleSliderChange}
+            minimumTrackTintColor={getRatingColor(selectedRating || 3)}
+            maximumTrackTintColor="#CCCCCC"
+            thumbTintColor={getRatingColor(selectedRating || 3)}
+          />
+          
+          <Text style={[
+            styles.sliderValueText,
+            { color: getRatingColor(selectedRating || 3) }
+          ]}>
+            {selectedRating ? selectedRating.toFixed(1) : '3.0'}
+          </Text>
+          
+          <View style={styles.sliderLabels}>
+            <Text style={styles.sliderMinLabel}>{t('veryBad')}</Text>
+            <Text style={styles.sliderMaxLabel}>{t('veryGood')}</Text>
+          </View>
+        </View>
+      );
+    }
+    
+    // For non-slider visual styles, render the mood buttons
+    return (
+      <View>
+        <Text style={styles.sectionTitle}>{t('yourMoodToday')}</Text>
         <View style={styles.moodScaleContainer}>
           {MOOD_SCALE.map((mood) => (
             <TouchableOpacity
@@ -101,30 +192,30 @@ const QuickMoodEntry = ({ onMoodAdded, onDetailedEntry }) => {
               ]}
               onPress={() => handleRatingSelect(mood.value)}
             >
-              <Text style={styles.moodEmoji}>{mood.emoji}</Text>
-              <Text style={styles.moodLabel}>{mood.label}</Text>
+              <Text style={styles.moodEmoji}>
+                {getMoodIconForRating(mood.value)}
+              </Text>
+              <Text style={styles.moodLabel}>{t(mood.label.toLowerCase().replace(' ', ''))}</Text>
             </TouchableOpacity>
           ))}
         </View>
       </View>
+    );
+  };
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>{t('howAreYouFeeling')}</Text>
+      
+      <View style={styles.ratingContainer}>
+        {renderRatingSelector()}
+      </View>
 
       <View style={styles.emotionContainer}>
-        <Text style={styles.sectionTitle}>Primary emotion</Text>
+        <Text style={styles.sectionTitle}>{t('primaryEmotion')}</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View style={styles.emotionButtons}>
-            {EMOTIONS.map((emotion) => (
-              <TouchableOpacity
-                key={emotion.value}
-                style={[
-                  styles.emotionButton,
-                  selectedEmotion === emotion.value && styles.selectedEmotion
-                ]}
-                onPress={() => handleEmotionSelect(emotion.value)}
-              >
-                <Text style={styles.emoji}>{emotion.emoji}</Text>
-                <Text style={styles.emotionText}>{emotion.label}</Text>
-              </TouchableOpacity>
-            ))}
+            {EMOTIONS.map(renderEmotionItem)}
           </View>
         </ScrollView>
       </View>
@@ -136,12 +227,12 @@ const QuickMoodEntry = ({ onMoodAdded, onDetailedEntry }) => {
           disabled={!selectedRating || !selectedEmotion || submitting}
         >
           <Text style={styles.submitButtonText}>
-            {submitting ? 'Saving...' : 'Save Mood'}
+            {submitting ? t('saving') : t('saveMood')}
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.detailedButton} onPress={handleDetailedEntry}>
-          <Text style={styles.detailedButtonText}>Add Details</Text>
+          <Text style={styles.detailedButtonText}>{t('addDetails')}</Text>
           <AntDesign name="pluscircleo" size={16} color="#4A90E2" />
         </TouchableOpacity>
       </View>
@@ -228,8 +319,14 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   emotionText: {
-    fontSize: 12,
-    color: '#666',
+    fontSize: 14,
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  noEmojiEmotionText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginTop: 0,
   },
   actionButtons: {
     marginTop: 20,
@@ -261,6 +358,38 @@ const styles = StyleSheet.create({
     color: '#4A90E2',
     fontWeight: '600',
     marginRight: 8,
+  },
+  sliderContainer: {
+    padding: 16,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 12,
+    marginBottom: 28,
+  },
+  slider: {
+    width: '100%',
+    height: 40,
+    marginTop: 10,
+  },
+  sliderValueText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  sliderLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  sliderMinLabel: {
+    color: '#E57373', // Red for minimum
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  sliderMaxLabel: {
+    color: '#4CAF50', // Green for maximum
+    fontWeight: 'bold',
+    fontSize: 14,
   },
 });
 

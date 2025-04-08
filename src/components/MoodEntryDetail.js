@@ -1,6 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { ACTIVITY_CATEGORIES } from '../data/models';
+import { useLanguage } from '../context/LanguageContext';
+import { useVisualStyle } from '../context/VisualStyleContext';
 
 // Use the same EMOTIONS definition as in MoodScreen.js
 const EMOTIONS = [
@@ -18,16 +20,31 @@ const EMOTIONS = [
   { value: 'content', label: 'Content', emoji: '🙂' },
 ];
 
-const MoodEntryDetail = ({ entry, onClose, bottomInset = 0, topInset = 0 }) => {
+const MoodEntryDetail = ({ entry, onClose, bottomInset = 0, topInset = 0, getTranslatedEmotion, getMoodIcon }) => {
+  const { t } = useLanguage();
+  const localVisualStyle = useVisualStyle();
+  
+  // Use provided visual style helpers or fallback to context
+  const actualGetMoodIcon = getMoodIcon || localVisualStyle.getMoodIcon;
+
   if (!entry) return null;
 
   // Get emotion details
-  const emotion = EMOTIONS.find(e => e.value === entry.emotion) || 
-    { label: entry.emotion || 'Unknown', emoji: '😐' };
+  const getEmotion = () => {
+    const emotionObj = EMOTIONS.find(e => e.value === entry.emotion) || 
+      { label: entry.emotion || 'Unknown', emoji: '😐' };
+    
+    return {
+      ...emotionObj,
+      label: getTranslatedEmotion ? getTranslatedEmotion(entry.emotion) : t(emotionObj.value) || emotionObj.label
+    };
+  };
+
+  const emotion = getEmotion();
 
   // Format date
   const formatDate = (timestamp) => {
-    if (!timestamp) return 'Unknown date';
+    if (!timestamp) return t('unknownDate');
     const date = new Date(timestamp);
     return date.toLocaleDateString('en-US', { 
       weekday: 'long',
@@ -65,7 +82,7 @@ const MoodEntryDetail = ({ entry, onClose, bottomInset = 0, topInset = 0 }) => {
 
       return (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Activities</Text>
+          <Text style={styles.sectionTitle}>{t('activities')}</Text>
           {activityKeys.map((type, index) => {
             if (!type) return null;
             
@@ -111,8 +128,8 @@ const MoodEntryDetail = ({ entry, onClose, bottomInset = 0, topInset = 0 }) => {
       console.error('Error rendering activities:', error);
       return (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Activities</Text>
-          <Text style={styles.errorText}>Error displaying activities</Text>
+          <Text style={styles.sectionTitle}>{t('activities')}</Text>
+          <Text style={styles.errorText}>{t('errorDisplayingActivities')}</Text>
         </View>
       );
     }
@@ -135,9 +152,9 @@ const MoodEntryDetail = ({ entry, onClose, bottomInset = 0, topInset = 0 }) => {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Text style={styles.closeButtonText}>← Back</Text>
+            <Text style={styles.closeButtonText}>{t('back')}</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>Mood Details</Text>
+          <Text style={styles.title}>{t('moodDetails')}</Text>
           <View style={{width: 80}} />
         </View>
 
@@ -150,7 +167,7 @@ const MoodEntryDetail = ({ entry, onClose, bottomInset = 0, topInset = 0 }) => {
             <Text style={styles.ratingText}>{safeRender(entry.rating || 0)}/5</Text>
           </View>
           <View style={styles.emotionContainer}>
-            <Text style={styles.emotionEmoji}>{safeRender(emotion.emoji)}</Text>
+            <Text style={styles.emotionEmoji}>{actualGetMoodIcon ? actualGetMoodIcon(entry.rating) : emotion.emoji}</Text>
             <Text style={styles.emotionLabel}>{safeRender(emotion.label)}</Text>
           </View>
         </View>
@@ -158,7 +175,7 @@ const MoodEntryDetail = ({ entry, onClose, bottomInset = 0, topInset = 0 }) => {
         {/* Notes */}
         {entry.notes ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Notes</Text>
+            <Text style={styles.sectionTitle}>{t('notes')}</Text>
             <View style={styles.notesContainer}>
               <Text style={styles.notesText}>{safeRender(entry.notes)}</Text>
             </View>
@@ -168,12 +185,12 @@ const MoodEntryDetail = ({ entry, onClose, bottomInset = 0, topInset = 0 }) => {
         {/* Context Details */}
         {(entry.location || entry.socialContext || entry.weather) ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Context</Text>
+            <Text style={styles.sectionTitle}>{t('context')}</Text>
             
             {/* Location */}
             {entry.location ? (
               <View style={styles.contextItem}>
-                <Text style={styles.contextLabel}>Location:</Text>
+                <Text style={styles.contextLabel}>{t('location')}:</Text>
                 <Text style={styles.contextValue}>{safeRender(entry.location)}</Text>
               </View>
             ) : null}
@@ -181,7 +198,7 @@ const MoodEntryDetail = ({ entry, onClose, bottomInset = 0, topInset = 0 }) => {
             {/* Social Context */}
             {entry.socialContext ? (
               <View style={styles.contextItem}>
-                <Text style={styles.contextLabel}>Social:</Text>
+                <Text style={styles.contextLabel}>{t('social')}:</Text>
                 <Text style={styles.contextValue}>{safeRender(entry.socialContext)}</Text>
               </View>
             ) : null}
@@ -189,7 +206,7 @@ const MoodEntryDetail = ({ entry, onClose, bottomInset = 0, topInset = 0 }) => {
             {/* Weather */}
             {entry.weather ? (
               <View style={styles.contextItem}>
-                <Text style={styles.contextLabel}>Weather:</Text>
+                <Text style={styles.contextLabel}>{t('weather')}:</Text>
                 <Text style={styles.contextValue}>{safeRender(entry.weather)}</Text>
               </View>
             ) : null}
@@ -199,7 +216,7 @@ const MoodEntryDetail = ({ entry, onClose, bottomInset = 0, topInset = 0 }) => {
         {/* Tags */}
         {entry.tags && Array.isArray(entry.tags) && entry.tags.length > 0 ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Tags</Text>
+            <Text style={styles.sectionTitle}>{t('tags')}</Text>
             <View style={styles.tagsContainer}>
               {entry.tags.map((tag, index) => (
                 <View key={`tag-${index}`} style={styles.tag}>

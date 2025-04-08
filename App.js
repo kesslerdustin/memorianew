@@ -1,12 +1,16 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Modal } from 'react-native';
 import { useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import MoodScreen from './src/screens/MoodScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
+import { LanguageProvider } from './src/context/LanguageContext';
+import { VisualStyleProvider } from './src/context/VisualStyleContext';
 
 export default function App() {
   const [selectedSection, setSelectedSection] = useState(null);
   const [activeScreen, setActiveScreen] = useState(null);
+  const [isAppSettingsVisible, setIsAppSettingsVisible] = useState(false);
 
   const sections = [
     { id: 'memories', title: 'Memories', color: '#FF8A65' },
@@ -50,6 +54,16 @@ export default function App() {
     setSelectedSection(null);
   };
 
+  // Handle opening app settings
+  const handleOpenSettings = () => {
+    setIsAppSettingsVisible(true);
+  };
+
+  // Handle closing app settings
+  const handleCloseSettings = () => {
+    setIsAppSettingsVisible(false);
+  };
+
   // Render the appropriate screen based on the active screen state
   const renderScreen = () => {
     if (activeScreen === 'mood') {
@@ -60,7 +74,9 @@ export default function App() {
               <Text style={styles.backButtonText}>← Back</Text>
             </TouchableOpacity>
             <Text style={styles.screenTitle}>Mood Tracker</Text>
-            <View style={{ width: 70 }} />
+            <TouchableOpacity onPress={handleOpenSettings} style={styles.settingsButton}>
+              <Text style={styles.settingsIcon}>⚙️</Text>
+            </TouchableOpacity>
           </View>
           <MoodScreen />
         </View>
@@ -72,6 +88,12 @@ export default function App() {
         <View style={styles.header}>
           <Text style={styles.title}>Memoria</Text>
           <Text style={styles.subtitle}>Your life, all in one place</Text>
+          <TouchableOpacity 
+            style={styles.headerSettingsButton}
+            onPress={handleOpenSettings}
+          >
+            <Text style={styles.headerSettingsIcon}>⚙️</Text>
+          </TouchableOpacity>
         </View>
         
         <ScrollView style={styles.scrollView}>
@@ -95,10 +117,29 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <View style={styles.mainContainer}>
-        {renderScreen()}
-        <StatusBar style="auto" />
-      </View>
+      <LanguageProvider>
+        <VisualStyleProvider>
+          <View style={styles.mainContainer}>
+            {renderScreen()}
+            <StatusBar style="auto" />
+            
+            {/* App-level settings modal */}
+            {isAppSettingsVisible && (
+              <Modal
+                visible={isAppSettingsVisible}
+                animationType="slide"
+                transparent={false}
+                onRequestClose={handleCloseSettings}
+                statusBarTranslucent={false}
+              >
+                <SettingsScreen 
+                  onClose={handleCloseSettings}
+                />
+              </Modal>
+            )}
+          </View>
+        </VisualStyleProvider>
+      </LanguageProvider>
     </SafeAreaProvider>
   );
 }
@@ -193,5 +234,21 @@ const styles = StyleSheet.create({
   screenTitle: {
     fontSize: 20,
     fontWeight: 'bold',
+  },
+  headerSettingsButton: {
+    position: 'absolute',
+    right: 16,
+    top: 60,
+    padding: 8,
+  },
+  headerSettingsIcon: {
+    fontSize: 24,
+    color: 'white',
+  },
+  settingsButton: {
+    padding: 8,
+  },
+  settingsIcon: {
+    fontSize: 24,
   },
 });

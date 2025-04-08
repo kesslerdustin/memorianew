@@ -1,9 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView, Switch } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView, Switch, KeyboardAvoidingView, Platform } from 'react-native';
+import Slider from '@react-native-community/slider';
 import { EMOTIONS, ACTIVITY_CATEGORIES } from '../data/models';
 import { saveMoodEntry, generateId } from '../utils/database';
+import { useLanguage } from '../context/LanguageContext';
+import { useVisualStyle, VISUAL_STYLES, getRatingColor } from '../context/VisualStyleContext';
 
-const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = null }) => {
+const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = null, visualStyle, getMoodIcon }) => {
+  const { t } = useLanguage();
+  const localVisualStyle = useVisualStyle();
+  
+  // Use provided visual style helpers or fallback to context
+  const actualGetMoodIcon = getMoodIcon || localVisualStyle.getMoodIcon;
+  const actualVisualStyle = visualStyle || localVisualStyle.visualStyle;
+  
+  // Check if smileys should be shown
+  const showSmileys = actualVisualStyle === VISUAL_STYLES.SMILEYS;
+  
+  // Check if decimal values are supported
+  const supportsDecimal = actualVisualStyle === VISUAL_STYLES.SLIDER;
+
   const [rating, setRating] = useState(initialRating);
   const [selectedEmotion, setSelectedEmotion] = useState(null);
   const [notes, setNotes] = useState('');
@@ -61,7 +77,7 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
   // Handle submission of the form
   const handleSubmit = async () => {
     if (!selectedEmotion) {
-      alert('Please select an emotion');
+      alert(t('pleaseSelectEmotion'));
       return;
     }
     
@@ -103,11 +119,11 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
         // Call the onSave callback with the new entry
         onSave && onSave(savedEntry);
       } else {
-        alert('Failed to save mood entry. Please try again.');
+        alert(t('failedToSaveMood'));
       }
     } catch (error) {
       console.error('Error saving mood entry:', error);
-      alert('An error occurred while saving your mood entry.');
+      alert(t('errorSavingMood'));
     } finally {
       setIsSaving(false);
     }
@@ -120,6 +136,68 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
     } else {
       setSelectedTags([...selectedTags, tag]);
     }
+  };
+  
+  // Handle rating change
+  const handleRatingChange = (value) => {
+    if (supportsDecimal) {
+      // For slider style, round to 1 decimal place
+      setRating(Math.round(value * 10) / 10);
+    } else {
+      // For other styles, use integer values
+      setRating(Math.round(value));
+    }
+  };
+  
+  // Render the rating selector based on visual style
+  const renderRatingSelector = () => {
+    if (supportsDecimal) {
+      return (
+        <View style={styles.sliderContainer}>
+          <Slider
+            style={styles.slider}
+            minimumValue={1}
+            maximumValue={5}
+            step={0.1}
+            value={rating}
+            minimumTrackTintColor={getRatingColor(rating)}
+            maximumTrackTintColor="#CCCCCC"
+            thumbTintColor={getRatingColor(rating)}
+            onValueChange={handleRatingChange}
+          />
+          <Text style={{ textAlign: 'center', fontSize: 24, fontWeight: 'bold', color: getRatingColor(rating), marginVertical: 10 }}>
+            {rating.toFixed(1)}
+          </Text>
+          <View style={styles.sliderLabels}>
+            <Text style={styles.sliderMinLabel}>{t('veryBad')}</Text>
+            <Text style={styles.sliderMaxLabel}>{t('veryGood')}</Text>
+          </View>
+        </View>
+      );
+    }
+    
+    // Default button-based rating selector for integer values
+    return (
+      <View style={styles.ratingContainer}>
+        <Text style={styles.ratingLabel}>{t('moodRating')}: {rating}/5</Text>
+        <View style={styles.ratingButtons}>
+          {[1, 2, 3, 4, 5].map((value) => (
+            <TouchableOpacity
+              key={value}
+              style={[
+                styles.ratingButton,
+                rating === value && styles.selectedRating,
+              ]}
+              onPress={() => setRating(value)}
+            >
+              <Text style={styles.ratingButtonText}>
+                {actualGetMoodIcon ? actualGetMoodIcon(value) : value}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    );
   };
   
   // Handle location selection
@@ -153,469 +231,478 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
     }
   };
   
+  // Render emotion item with or without emoji based on visual style
+  const renderEmotionItem = (emotion) => {
+    return (
+      <TouchableOpacity
+        key={emotion.value}
+        style={[
+          styles.emotionButton,
+          selectedEmotion?.value === emotion.value && styles.selectedEmotion,
+        ]}
+        onPress={() => setSelectedEmotion(emotion)}
+      >
+        {showSmileys && (
+          <Text style={styles.emotionEmoji}>{emotion.emoji}</Text>
+        )}
+        <Text style={[
+          styles.emotionLabel,
+          !showSmileys && styles.noEmojiEmotionLabel
+        ]}>
+          {t(emotion.value)}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
+  
   return (
-    <ScrollView style={styles.scrollContainer}>
-      <View style={styles.container}>
-        <Text style={styles.title}>How are you feeling?</Text>
-        
-        {/* Mood Rating Slider */}
-        <View style={styles.ratingContainer}>
-          <Text style={styles.ratingLabel}>Mood Rating: {rating}/5</Text>
-          <View style={styles.ratingButtons}>
-            {[1, 2, 3, 4, 5].map((value) => (
-              <TouchableOpacity
-                key={value}
-                style={[
-                  styles.ratingButton,
-                  rating === value && styles.selectedRating,
-                ]}
-                onPress={() => setRating(value)}
-              >
-                <Text style={[
-                  styles.ratingButtonText,
-                  rating === value && styles.selectedRatingText,
-                ]}>
-                  {value}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-        
-        {/* Emotions Selection */}
-        <Text style={styles.sectionTitle}>Select Primary Emotion</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.emotionsContainer}>
-          {EMOTIONS.map((emotion) => (
-            <TouchableOpacity
-              key={emotion.value}
-              style={[
-                styles.emotionButton,
-                selectedEmotion?.value === emotion.value && styles.selectedEmotion,
-              ]}
-              onPress={() => setSelectedEmotion(emotion)}
-            >
-              <Text style={styles.emotionEmoji}>{emotion.emoji}</Text>
-              <Text style={styles.emotionLabel}>{emotion.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-        
-        {/* Toggle for Advanced Options */}
-        <TouchableOpacity 
-          style={styles.advancedToggle}
-          onPress={() => setShowAdvancedOptions(!showAdvancedOptions)}
+    <KeyboardAvoidingView 
+      style={styles.keyboardAvoidingView} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
+    >
+      <View style={styles.contentContainer}>
+        <ScrollView 
+          style={styles.scrollContainer}
+          contentContainerStyle={styles.scrollContentContainer}
         >
-          <Text style={styles.advancedToggleLabel}>
-            {showAdvancedOptions ? 'Hide Context Details' : 'Add Context Details'}
-          </Text>
-          <Switch 
-            value={showAdvancedOptions}
-            onValueChange={setShowAdvancedOptions}
-            trackColor={{ false: '#ccc', true: '#81D4FA' }}
-            thumbColor={showAdvancedOptions ? '#4A90E2' : '#f4f3f4'}
-          />
-        </TouchableOpacity>
-        
-        {showAdvancedOptions && (
-          <>
-            {/* Location Selection */}
-            <Text style={styles.sectionTitle}>Where are you?</Text>
-            <View style={styles.tagsContainer}>
-              {locationOptions.map((location) => (
-                <TouchableOpacity
-                  key={location}
-                  style={[
-                    styles.tagButton,
-                    selectedLocation === location && styles.selectedTag,
-                  ]}
-                  onPress={() => selectLocation(location)}
-                >
-                  <Text style={[
-                    styles.tagText,
-                    selectedLocation === location && styles.selectedTagText,
-                  ]}>
-                    {location}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+          <View style={styles.container}>
+            <Text style={styles.title}>{t('howAreYouFeeling')}</Text>
             
-            {/* Social Context Selection */}
-            <Text style={styles.sectionTitle}>Who are you with?</Text>
-            <View style={styles.tagsContainer}>
-              {socialContextOptions.map((context) => (
-                <TouchableOpacity
-                  key={context}
-                  style={[
-                    styles.tagButton,
-                    selectedSocialContext === context && styles.selectedTag,
-                  ]}
-                  onPress={() => selectSocialContext(context)}
-                >
-                  <Text style={[
-                    styles.tagText,
-                    selectedSocialContext === context && styles.selectedTagText,
-                  ]}>
-                    {context}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            {/* Mood Rating Slider */}
+            {renderRatingSelector()}
             
-            {/* Weather Selection */}
-            <Text style={styles.sectionTitle}>How's the weather?</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.weatherContainer}>
-              {weatherOptions.map((weather) => (
-                <TouchableOpacity
-                  key={weather.label}
-                  style={[
-                    styles.weatherButton,
-                    selectedWeather === weather.label && styles.selectedWeather,
-                  ]}
-                  onPress={() => selectWeather(weather.label)}
-                >
-                  <Text style={styles.weatherEmoji}>{weather.emoji}</Text>
-                  <Text style={styles.weatherLabel}>{weather.label}</Text>
-                </TouchableOpacity>
-              ))}
+            {/* Emotions Selection */}
+            <Text style={styles.sectionTitle}>{t('selectPrimaryEmotion')}</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.emotionsContainer}>
+              {EMOTIONS.map(renderEmotionItem)}
             </ScrollView>
             
-            {/* Tags Selection */}
-            <Text style={styles.sectionTitle}>Context Tags</Text>
-            <View style={styles.tagsContainer}>
-              {commonTags.map((tag) => (
-                <TouchableOpacity
-                  key={tag}
-                  style={[
-                    styles.tagButton,
-                    selectedTags.includes(tag) && styles.selectedTag,
-                  ]}
-                  onPress={() => toggleTag(tag)}
-                >
-                  <Text style={[
-                    styles.tagText,
-                    selectedTags.includes(tag) && styles.selectedTagText,
-                  ]}>
-                    {tag}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            {/* Notes Input */}
+            <Text style={styles.sectionTitle}>{t('notes')}</Text>
+            <TextInput
+              style={styles.notesInput}
+              multiline
+              placeholder={t('addNoteAboutHowYouFeel')}
+              value={notes}
+              onChangeText={setNotes}
+            />
             
-            {/* Activities Selection */}
-            <Text style={styles.sectionTitle}>Activities</Text>
-            {Object.entries(ACTIVITY_CATEGORIES).map(([key, category]) => (
-              <View key={key} style={styles.activityCategory}>
-                <Text style={styles.categoryLabel}>{category}</Text>
-                <View style={styles.activityOptions}>
-                  <TouchableOpacity
-                    style={[
-                      styles.activityButton,
-                      selectedActivities[key] === 'low' && styles.selectedActivityLow,
-                    ]}
-                    onPress={() => toggleActivity(key, 'low')}
-                  >
-                    <Text style={styles.activityText}>Low</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.activityButton,
-                      selectedActivities[key] === 'medium' && styles.selectedActivityMedium,
-                    ]}
-                    onPress={() => toggleActivity(key, 'medium')}
-                  >
-                    <Text style={styles.activityText}>Medium</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.activityButton,
-                      selectedActivities[key] === 'high' && styles.selectedActivityHigh,
-                    ]}
-                    onPress={() => toggleActivity(key, 'high')}
-                  >
-                    <Text style={styles.activityText}>High</Text>
-                  </TouchableOpacity>
+            {/* Toggle for Advanced Options */}
+            <TouchableOpacity 
+              style={styles.advancedToggle}
+              onPress={() => setShowAdvancedOptions(!showAdvancedOptions)}
+            >
+              <Text style={styles.advancedToggleLabel}>
+                {showAdvancedOptions ? t('hideContextDetails') : t('addContextDetails')}
+              </Text>
+              <Switch 
+                value={showAdvancedOptions}
+                onValueChange={setShowAdvancedOptions}
+                trackColor={{ false: '#ccc', true: '#81D4FA' }}
+                thumbColor={showAdvancedOptions ? '#4A90E2' : '#f4f3f4'}
+              />
+            </TouchableOpacity>
+            
+            {showAdvancedOptions && (
+              <>
+                {/* Location Selection */}
+                <Text style={styles.sectionTitle}>{t('whereAreYou')}</Text>
+                <View style={styles.tagsContainer}>
+                  {locationOptions.map((location) => (
+                    <TouchableOpacity
+                      key={location}
+                      style={[
+                        styles.tagButton,
+                        selectedLocation === location && styles.selectedTag,
+                      ]}
+                      onPress={() => selectLocation(location)}
+                    >
+                      <Text style={[
+                        styles.tagText,
+                        selectedLocation === location && styles.selectedTagText,
+                      ]}>
+                        {location}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
-              </View>
-            ))}
-          </>
-        )}
+                
+                {/* Social Context Selection */}
+                <Text style={styles.sectionTitle}>{t('whoAreYouWith')}</Text>
+                <View style={styles.tagsContainer}>
+                  {socialContextOptions.map((context) => (
+                    <TouchableOpacity
+                      key={context}
+                      style={[
+                        styles.tagButton,
+                        selectedSocialContext === context && styles.selectedTag,
+                      ]}
+                      onPress={() => selectSocialContext(context)}
+                    >
+                      <Text style={[
+                        styles.tagText,
+                        selectedSocialContext === context && styles.selectedTagText,
+                      ]}>
+                        {context}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                
+                {/* Weather Selection */}
+                <Text style={styles.sectionTitle}>{t('howIsTheWeather')}</Text>
+                <View style={styles.tagsContainer}>
+                  {weatherOptions.map((weather) => (
+                    <TouchableOpacity
+                      key={weather.label}
+                      style={[
+                        styles.weatherButton,
+                        selectedWeather === weather.label && styles.selectedTag,
+                      ]}
+                      onPress={() => selectWeather(weather.label)}
+                    >
+                      <Text style={styles.weatherEmoji}>{weather.emoji}</Text>
+                      <Text style={[
+                        styles.tagText,
+                        selectedWeather === weather.label && styles.selectedTagText,
+                      ]}>
+                        {weather.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                
+                {/* Tags */}
+                <Text style={styles.sectionTitle}>{t('addTags')}</Text>
+                <View style={styles.tagsContainer}>
+                  {commonTags.map((tag) => (
+                    <TouchableOpacity
+                      key={tag}
+                      style={[
+                        styles.tagButton,
+                        selectedTags.includes(tag) && styles.selectedTag,
+                      ]}
+                      onPress={() => toggleTag(tag)}
+                    >
+                      <Text style={[
+                        styles.tagText,
+                        selectedTags.includes(tag) && styles.selectedTagText,
+                      ]}>
+                        {tag}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                
+                {/* Activities */}
+                <Text style={styles.sectionTitle}>{t('activities')}</Text>
+                {Object.keys(ACTIVITY_CATEGORIES).map((category) => (
+                  <View key={category} style={styles.activityCategory}>
+                    <Text style={styles.activityCategoryLabel}>{ACTIVITY_CATEGORIES[category]}</Text>
+                    <View style={styles.activityOptionsContainer}>
+                      {['Low', 'Medium', 'High'].map((level) => (
+                        <TouchableOpacity
+                          key={`${category}-${level}`}
+                          style={[
+                            styles.activityOption,
+                            selectedActivities[category] === level && styles.selectedActivityOption,
+                          ]}
+                          onPress={() => toggleActivity(category, level)}
+                        >
+                          <Text style={[
+                            styles.activityOptionText,
+                            selectedActivities[category] === level && styles.selectedActivityOptionText,
+                          ]}>
+                            {level}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                ))}
+              </>
+            )}
+            
+            {/* Add padding at the bottom to ensure scroll shows all content */}
+            <View style={styles.bottomSpacer} />
+          </View>
+        </ScrollView>
         
-        {/* Notes Input */}
-        <Text style={styles.sectionTitle}>Notes</Text>
-        <TextInput
-          style={styles.notesInput}
-          placeholder="What's on your mind? (optional)"
-          value={notes}
-          onChangeText={setNotes}
-          multiline
-          maxLength={500}
-        />
-        
-        {/* Submit Button */}
-        <View style={styles.submitContainer}>
-          <TouchableOpacity
-            style={[
-              styles.submitButton,
-              (!selectedEmotion && styles.disabledButton),
-              isSaving && styles.savingButton
-            ]}
-            onPress={handleSubmit}
-            disabled={!selectedEmotion || isSaving}
-          >
-            <Text style={styles.submitButtonText}>
-              {isSaving ? 'Saving...' : 'Save Entry'}
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.cancelButton}
+        {/* Fixed Footer Buttons */}
+        <View style={styles.footer}>
+          <TouchableOpacity 
+            style={styles.cancelButton} 
             onPress={onCancel}
             disabled={isSaving}
           >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
+            <Text style={styles.cancelButtonText}>{t('cancel')}</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.saveButton}
+            onPress={handleSubmit}
+            disabled={isSaving}
+          >
+            <Text style={styles.saveButtonText}>
+              {isSaving ? t('saving') : t('save')}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
-    </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
+  keyboardAvoidingView: {
+    flex: 1,
+  },
+  contentContainer: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+  },
   scrollContainer: {
-    maxHeight: '80%',
+    flex: 1,
+  },
+  scrollContentContainer: {
+    paddingBottom: 40,
   },
   container: {
-    padding: 20,
-    backgroundColor: 'white',
-    borderRadius: 16,
+    padding: 16,
+    paddingBottom: 30,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 20,
     textAlign: 'center',
-    color: '#333',
   },
   ratingContainer: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   ratingLabel: {
     fontSize: 18,
-    marginBottom: 12,
+    fontWeight: 'bold',
+    marginBottom: 10,
     textAlign: 'center',
-    color: '#555',
   },
   ratingButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginBottom: 10,
   },
   ratingButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#f0f0f0',
+    width: 60,
+    height: 60,
     justifyContent: 'center',
     alignItems: 'center',
+    borderRadius: 30,
+    backgroundColor: '#f0f0f0',
   },
   selectedRating: {
     backgroundColor: '#4A90E2',
   },
   ratingButtonText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#555',
+    fontSize: 28,
   },
   selectedRatingText: {
-    color: '#fff',
+    color: 'white',
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     marginTop: 16,
     marginBottom: 12,
-    color: '#444',
   },
   emotionsContainer: {
-    flexDirection: 'row',
     marginBottom: 20,
   },
   emotionButton: {
-    width: 80,
-    height: 90,
-    borderRadius: 12,
-    backgroundColor: '#f7f7f7',
-    padding: 10,
-    marginRight: 10,
     alignItems: 'center',
-    justifyContent: 'center',
+    padding: 12,
+    marginRight: 12,
+    borderRadius: 12,
+    backgroundColor: '#f5f5f5',
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: '#e0e0e0',
+    width: 100,
   },
   selectedEmotion: {
-    backgroundColor: '#E1F5FE',
     borderColor: '#4A90E2',
+    backgroundColor: '#E1F5FE',
   },
   emotionEmoji: {
     fontSize: 32,
-    marginBottom: 5,
+    marginBottom: 4,
   },
   emotionLabel: {
+    fontSize: 14,
     textAlign: 'center',
-    fontSize: 12,
-    color: '#555',
+  },
+  noEmojiEmotionLabel: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    paddingVertical: 8,
+  },
+  notesInput: {
+    height: 100,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    padding: 10,
+    textAlignVertical: 'top',
+    backgroundColor: 'white',
   },
   advancedToggle: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginVertical: 16,
-    padding: 12,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 12,
+    marginTop: 20,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#e0e0e0',
   },
   advancedToggleLabel: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#444',
   },
   tagsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: 16,
+    marginBottom: 10,
+    paddingVertical: 4,
   },
   tagButton: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 16,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingVertical: 8,
-    margin: 4,
-    borderWidth: 1,
-    borderColor: '#eee',
+    borderRadius: 20,
+    backgroundColor: '#F1F1F1',
+    marginRight: 8,
+    marginBottom: 8,
+    minWidth: 80,
   },
   selectedTag: {
     backgroundColor: '#4A90E2',
-    borderColor: '#2979FF',
   },
   tagText: {
     fontSize: 14,
-    color: '#555',
+    color: '#333',
   },
   selectedTagText: {
     color: 'white',
-    fontWeight: 'bold',
-  },
-  weatherContainer: {
-    flexDirection: 'row',
-    marginBottom: 20,
   },
   weatherButton: {
-    width: 80,
-    height: 90,
-    borderRadius: 12,
-    backgroundColor: '#f7f7f7',
-    padding: 10,
-    marginRight: 10,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
-  selectedWeather: {
-    backgroundColor: '#E1F5FE',
-    borderColor: '#4A90E2',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#F1F1F1',
+    marginRight: 8,
+    marginBottom: 8,
+    minWidth: 100,
   },
   weatherEmoji: {
-    fontSize: 32,
-    marginBottom: 5,
-  },
-  weatherLabel: {
-    textAlign: 'center',
-    fontSize: 12,
-    color: '#555',
+    fontSize: 16,
+    marginRight: 4,
   },
   activityCategory: {
     marginBottom: 16,
   },
-  categoryLabel: {
+  activityCategoryLabel: {
     fontSize: 16,
     marginBottom: 8,
-    color: '#555',
   },
-  activityOptions: {
+  activityOptionsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
   },
-  activityButton: {
+  activityOption: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
     padding: 10,
-    margin: 4,
-    borderRadius: 8,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: '#e0e0e0',
+    marginRight: 4,
+    borderRadius: 4,
   },
-  selectedActivityLow: {
-    backgroundColor: '#A5D6A7', // Light green
-    borderColor: '#66BB6A',
-  },
-  selectedActivityMedium: {
-    backgroundColor: '#FFE082', // Yellow
-    borderColor: '#FFD54F',
-  },
-  selectedActivityHigh: {
-    backgroundColor: '#FFAB91', // Orange
-    borderColor: '#FF8A65',
-  },
-  activityText: {
-    fontSize: 14,
-    color: '#555',
-  },
-  notesInput: {
-    borderWidth: 1,
-    borderColor: '#eee',
-    borderRadius: 12,
-    padding: 16,
-    height: 120,
-    textAlignVertical: 'top',
-    fontSize: 16,
-    backgroundColor: '#f9f9f9',
-  },
-  submitContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 24,
-  },
-  submitButton: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+  selectedActivityOption: {
     backgroundColor: '#4A90E2',
+    borderColor: '#4A90E2',
   },
-  disabledButton: {
-    backgroundColor: '#f0f0f0',
+  activityOptionText: {
+    color: '#333',
   },
-  savingButton: {
-    backgroundColor: '#4A90E2',
-  },
-  submitButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
+  selectedActivityOptionText: {
     color: 'white',
   },
-  cancelButton: {
+  bottomSpacer: {
+    height: 70,
+  },
+  footer: {
+    flexDirection: 'row',
     padding: 16,
-    borderRadius: 12,
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 12,
     alignItems: 'center',
-    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    marginRight: 8,
   },
   cancelButtonText: {
-    fontSize: 16,
+    color: '#666',
     fontWeight: 'bold',
-  }
+  },
+  saveButton: {
+    flex: 2,
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: '#4A90E2',
+    borderRadius: 8,
+  },
+  saveButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  sliderContainer: {
+    marginBottom: 20,
+    padding: 10,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 12,
+  },
+  slider: {
+    width: '100%',
+    height: 40,
+  },
+  sliderLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+    marginTop: 5,
+  },
+  sliderMinLabel: {
+    color: '#E57373', // Red for minimum
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  sliderMaxLabel: {
+    color: '#4CAF50', // Green for maximum
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
 });
 
 export default MoodEntryForm; 

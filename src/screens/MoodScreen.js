@@ -8,6 +8,9 @@ import QuickMoodEntry from '../components/QuickMoodEntry';
 import ScientificSurvey from '../components/ScientificSurvey';
 import MoodAnalytics from '../components/MoodAnalytics';
 import MoodEntryDetail from '../components/MoodEntryDetail';
+import SettingsScreen from './SettingsScreen';
+import { useLanguage } from '../context/LanguageContext';
+import { useVisualStyle } from '../context/VisualStyleContext';
 
 // Define emotions for display
 const EMOTIONS = [
@@ -26,6 +29,8 @@ const EMOTIONS = [
 ];
 
 const MoodScreen = ({ navigation }) => {
+  const { t } = useLanguage();
+  const { getMoodIcon, visualStyle } = useVisualStyle();
   const [moodEntries, setMoodEntries] = useState([]);
   const [isFormVisible, setIsFormVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -38,8 +43,20 @@ const MoodScreen = ({ navigation }) => {
   const [selectedEmotion, setSelectedEmotion] = useState(null);
   const [selectedEntry, setSelectedEntry] = useState(null);
   const [isDetailVisible, setIsDetailVisible] = useState(false);
+  const [isSettingsVisible, setIsSettingsVisible] = useState(false);
   const insets = useSafeAreaInsets();
   const PAGE_SIZE = 20;
+
+  // Helper function to get translated emotion label
+  const getTranslatedEmotion = (emotionValue) => {
+    const emotion = EMOTIONS.find(e => e.value === emotionValue);
+    return emotion ? t(emotion.value) : emotionValue;
+  };
+
+  // Helper function to get appropriate mood icon based on visual style
+  const getMoodIndicator = (rating) => {
+    return getMoodIcon(rating);
+  };
 
   // Initialize database when component mounts
   useEffect(() => {
@@ -71,12 +88,12 @@ const MoodScreen = ({ navigation }) => {
   // Handle database reset
   const handleResetDatabase = async () => {
     Alert.alert(
-      "Reset Database", 
-      "This will delete all your data. Are you sure?",
+      t('resetDatabase'), 
+      t('resetConfirmation'),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t('cancel'), style: "cancel" },
         { 
-          text: "Reset", 
+          text: t('reset'), 
           style: "destructive",
           onPress: async () => {
             setIsLoading(true);
@@ -162,9 +179,9 @@ const MoodScreen = ({ navigation }) => {
     
     // Show insight from the survey
     Alert.alert(
-      "Survey Results",
+      t('surveyResults'),
       results.interpretation,
-      [{ text: "OK" }]
+      [{ text: t('ok') }]
     );
   };
 
@@ -203,13 +220,18 @@ const MoodScreen = ({ navigation }) => {
     setSelectedEntry(null);
   };
 
+  // Handle closing settings screen
+  const handleCloseSettings = () => {
+    setIsSettingsVisible(false);
+  };
+
   // Render the main content based on active view
   const renderContent = () => {
     if (isLoading) {
       return (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FFD54F" />
-          <Text style={styles.loadingText}>Loading mood data...</Text>
+          <Text style={styles.loadingText}>{t('loadingMoodData')}</Text>
         </View>
       );
     }
@@ -225,13 +247,15 @@ const MoodScreen = ({ navigation }) => {
               <QuickMoodEntry 
                 onMoodAdded={handleQuickMoodEntry}
                 onDetailedEntry={handleAddDetails}
+                visualStyle={visualStyle}
+                getMoodIcon={getMoodIcon}
               />
             </View>
             
             {/* Survey prompts */}
             <View style={styles.surveyPrompts}>
-              <Text style={styles.sectionTitle}>Psychological Surveys</Text>
-              <Text style={styles.sectionSubtitle}>Get deeper insights into your well-being</Text>
+              <Text style={styles.sectionTitle}>{t('psychologicalSurveys')}</Text>
+              <Text style={styles.sectionSubtitle}>{t('surveyInsights')}</Text>
               
               <View style={styles.surveyButtons}>
                 <TouchableOpacity
@@ -241,8 +265,8 @@ const MoodScreen = ({ navigation }) => {
                     setActiveView('survey');
                   }}
                 >
-                  <Text style={styles.surveyButtonTitle}>WHO-5</Text>
-                  <Text style={styles.surveyButtonSubtitle}>Well-being Index</Text>
+                  <Text style={styles.surveyButtonTitle}>{t('who5')}</Text>
+                  <Text style={styles.surveyButtonSubtitle}>{t('wellbeingIndex')}</Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity
@@ -252,8 +276,8 @@ const MoodScreen = ({ navigation }) => {
                     setActiveView('survey');
                   }}
                 >
-                  <Text style={styles.surveyButtonTitle}>PANAS</Text>
-                  <Text style={styles.surveyButtonSubtitle}>Emotion Scale</Text>
+                  <Text style={styles.surveyButtonTitle}>{t('panas')}</Text>
+                  <Text style={styles.surveyButtonSubtitle}>{t('emotionScale')}</Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity
@@ -263,8 +287,8 @@ const MoodScreen = ({ navigation }) => {
                     setActiveView('survey');
                   }}
                 >
-                  <Text style={styles.surveyButtonTitle}>PHQ-9</Text>
-                  <Text style={styles.surveyButtonSubtitle}>Depression Screen</Text>
+                  <Text style={styles.surveyButtonTitle}>{t('phq9')}</Text>
+                  <Text style={styles.surveyButtonSubtitle}>{t('depressionScreen')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -272,26 +296,23 @@ const MoodScreen = ({ navigation }) => {
             {/* Recent moods */}
             {moodEntries.length > 0 && (
               <View style={styles.recentMoods}>
-                <Text style={styles.sectionTitle}>Recent Moods</Text>
+                <Text style={styles.sectionTitle}>{t('recentMoods')}</Text>
                 <TouchableOpacity
                   style={styles.viewAllButton}
                   onPress={() => setActiveView('history')}
                 >
-                  <Text style={styles.viewAllText}>View All</Text>
+                  <Text style={styles.viewAllText}>{t('viewAll')}</Text>
                 </TouchableOpacity>
                 
                 <View style={styles.moodTiles}>
                   {moodEntries.slice(0, 3).map((entry) => {
-                    const emotion = EMOTIONS.find(e => e.value === entry.emotion) || 
-                      { label: entry.emotion, emoji: '😐' };
-                    
                     return (
                       <TouchableOpacity
                         key={entry.id}
                         style={styles.moodTile}
                         onPress={() => handleViewMoodDetails(entry)}
                       >
-                        <Text style={styles.moodTileEmoji}>{emotion.emoji}</Text>
+                        <Text style={styles.moodTileEmoji}>{getMoodIndicator(entry.rating)}</Text>
                         <Text style={styles.moodTileRating}>{entry.rating}/5</Text>
                         <Text style={styles.moodTileDate}>
                           {new Date(entry.entry_time).toLocaleDateString()}
@@ -315,6 +336,9 @@ const MoodScreen = ({ navigation }) => {
             refreshing={isLoading}
             isLoadingMore={isLoadingMore}
             bottomInset={insets.bottom}
+            getTranslatedEmotion={getTranslatedEmotion}
+            getMoodIcon={getMoodIcon}
+            visualStyle={visualStyle}
           />
         );
         
@@ -343,14 +367,17 @@ const MoodScreen = ({ navigation }) => {
         animationType="slide"
         transparent={true}
         onRequestClose={handleCancel}
+        statusBarTranslucent={true}
       >
         <View style={[styles.modalOverlay, { paddingTop: insets.top }]}>
-          <View style={[styles.modalContainer, { paddingBottom: Math.max(20, insets.bottom) }]}>
+          <View style={styles.modalContainer}>
             <MoodEntryForm
               onSave={handleSaveMoodEntry}
               onCancel={handleCancel}
               initialRating={selectedRating || 3}
               initialEmotion={selectedEmotion}
+              visualStyle={visualStyle}
+              getMoodIcon={getMoodIcon}
             />
           </View>
         </View>
@@ -368,6 +395,20 @@ const MoodScreen = ({ navigation }) => {
           onClose={handleCloseDetails}
           bottomInset={insets.bottom}
           topInset={insets.top}
+          getTranslatedEmotion={getTranslatedEmotion}
+          getMoodIcon={getMoodIcon}
+        />
+      </Modal>
+
+      {/* Modal for settings */}
+      <Modal
+        visible={isSettingsVisible}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={handleCloseSettings}
+      >
+        <SettingsScreen 
+          onClose={handleCloseSettings}
         />
       </Modal>
 
@@ -381,7 +422,7 @@ const MoodScreen = ({ navigation }) => {
           onPress={() => setActiveView('quick')}
         >
           <Text style={styles.navIcon}>🏠</Text>
-          <Text style={styles.navText}>Home</Text>
+          <Text style={styles.navText}>{t('home')}</Text>
         </TouchableOpacity>
         
         <TouchableOpacity
@@ -389,7 +430,7 @@ const MoodScreen = ({ navigation }) => {
           onPress={() => setActiveView('history')}
         >
           <Text style={styles.navIcon}>📋</Text>
-          <Text style={styles.navText}>History</Text>
+          <Text style={styles.navText}>{t('history')}</Text>
         </TouchableOpacity>
         
         <TouchableOpacity
@@ -407,15 +448,15 @@ const MoodScreen = ({ navigation }) => {
           onPress={() => setActiveView('analytics')}
         >
           <Text style={styles.navIcon}>📊</Text>
-          <Text style={styles.navText}>Insights</Text>
+          <Text style={styles.navText}>{t('insights')}</Text>
         </TouchableOpacity>
         
         <TouchableOpacity
           style={styles.navButton}
-          onPress={handleResetDatabase}
+          onPress={() => setIsSettingsVisible(true)}
         >
           <Text style={styles.navIcon}>⚙️</Text>
-          <Text style={styles.navText}>Reset</Text>
+          <Text style={styles.navText}>{t('settings')}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -446,8 +487,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    paddingBottom: 20,
     maxHeight: '90%',
+    paddingTop: 16,
+    height: '90%', // Set a specific height to ensure it takes most of the screen
+    width: '100%',
   },
   bottomNav: {
     flexDirection: 'row',

@@ -1,5 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
+import { useLanguage } from '../context/LanguageContext';
+import { useVisualStyle } from '../context/VisualStyleContext';
 // Replace imported EMOTIONS with the one defined in MoodScreen
 // import { EMOTIONS } from '../data/models';
 
@@ -26,10 +28,24 @@ const MoodHistory = ({
   onRefresh, 
   refreshing,
   isLoadingMore,
-  bottomInset = 0
+  bottomInset = 0,
+  getTranslatedEmotion,
+  getMoodIcon,
+  visualStyle
 }) => {
+  const { t } = useLanguage();
+  const localVisualStyle = useVisualStyle();
+  
+  // Use provided visual style helpers or fallback to context
+  const actualGetMoodIcon = getMoodIcon || localVisualStyle.getMoodIcon;
+  const actualVisualStyle = visualStyle || localVisualStyle.visualStyle;
+
   const getEmotionDetails = (emotionValue) => {
-    return EMOTIONS.find(e => e.value === emotionValue) || { label: 'Unknown', emoji: '❓' };
+    const emotion = EMOTIONS.find(e => e.value === emotionValue) || { label: 'Unknown', emoji: '❓' };
+    return {
+      ...emotion,
+      label: getTranslatedEmotion ? getTranslatedEmotion(emotionValue) : t(emotion.value) || emotion.label
+    };
   };
 
   const formatDate = (timestamp) => {
@@ -45,8 +61,8 @@ const MoodHistory = ({
 
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
-      <Text style={styles.emptyText}>No mood entries yet</Text>
-      <Text style={styles.emptySubtext}>Your mood history will appear here</Text>
+      <Text style={styles.emptyText}>{t('noMoodEntries')}</Text>
+      <Text style={styles.emptySubtext}>{t('moodHistoryAppearHere')}</Text>
     </View>
   );
 
@@ -66,7 +82,9 @@ const MoodHistory = ({
         </View>
         
         <View style={styles.emotionContainer}>
-          <Text style={styles.emotionEmoji}>{emotion.emoji}</Text>
+          <Text style={styles.emotionEmoji}>
+            {actualVisualStyle ? actualGetMoodIcon(item.rating) : emotion.emoji}
+          </Text>
           <Text style={styles.emotionLabel}>{emotion.label}</Text>
         </View>
         
@@ -86,7 +104,7 @@ const MoodHistory = ({
     return (
       <View style={styles.footerContainer}>
         <ActivityIndicator size="small" color="#FFD54F" />
-        <Text style={styles.footerText}>Loading more...</Text>
+        <Text style={styles.footerText}>{t('loadingMore')}</Text>
       </View>
     );
   };
@@ -105,7 +123,7 @@ const MoodHistory = ({
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Mood History</Text>
+      <Text style={styles.title}>{t('moodHistory')}</Text>
       <FlatList
         data={entries}
         renderItem={renderMoodEntry}
