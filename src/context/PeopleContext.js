@@ -56,6 +56,12 @@ export const PeopleProvider = ({ children }) => {
     }
   };
 
+  // Function to get people by their IDs
+  const getPeopleById = (peopleIds) => {
+    if (!peopleIds || !Array.isArray(peopleIds)) return [];
+    return people.filter(person => peopleIds.includes(person.id));
+  };
+
   return (
     <PeopleContext.Provider value={{
       people,
@@ -63,6 +69,7 @@ export const PeopleProvider = ({ children }) => {
       addPerson: handleAddPerson,
       updatePerson: handleUpdatePerson,
       deletePerson: handleDeletePerson,
+      getPeopleById
     }}>
       {children}
     </PeopleContext.Provider>

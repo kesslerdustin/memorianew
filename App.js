@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Modal, Platform }
 import { useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import MoodScreen from './src/screens/MoodScreen';
+import FoodScreen from './src/screens/FoodScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import GlossarScreen from './src/screens/GlossarScreen';
 import { LanguageProvider } from './src/context/LanguageContext';
@@ -11,6 +12,7 @@ import { PeopleProvider } from './src/context/PeopleContext';
 import { MemoriesProvider } from './src/context/MemoriesContext';
 import { MoodsProvider } from './src/context/MoodsContext';
 import { PlacesProvider } from './src/context/PlacesContext';
+import { FoodProvider } from './src/context/FoodContext';
 
 export default function App() {
   const [selectedSection, setSelectedSection] = useState(null);
@@ -34,6 +36,8 @@ export default function App() {
     
     if (sectionId === 'mood') {
       setActiveScreen('mood');
+    } else if (sectionId === 'food') {
+      setActiveScreen('food');
     } else {
       setActiveScreen(null);
       console.log(`Navigating to ${sectionId}`);
@@ -120,7 +124,7 @@ export default function App() {
     if (activeScreen === 'mood') {
       return (
         <View style={styles.screenContainer}>
-          <View style={styles.screenHeader}>
+          <View style={[styles.screenHeader, { backgroundColor: '#FFD54F' }]}>
             <TouchableOpacity onPress={handleBack} style={styles.backButton}>
               <Text style={styles.backButtonText}>← Back</Text>
             </TouchableOpacity>
@@ -130,6 +134,21 @@ export default function App() {
             </TouchableOpacity>
           </View>
           <MoodScreen />
+        </View>
+      );
+    } else if (activeScreen === 'food') {
+      return (
+        <View style={styles.screenContainer}>
+          <View style={[styles.screenHeader, { backgroundColor: '#81C784' }]}>
+            <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+              <Text style={styles.backButtonText}>← Back</Text>
+            </TouchableOpacity>
+            <Text style={styles.screenTitle}>Food Tracker</Text>
+            <TouchableOpacity onPress={handleOpenSettings} style={styles.settingsButton}>
+              <Text style={styles.settingsIcon}>⚙️</Text>
+            </TouchableOpacity>
+          </View>
+          <FoodScreen />
         </View>
       );
     }
@@ -175,24 +194,26 @@ export default function App() {
             <MemoriesProvider>
               <MoodsProvider>
                 <PlacesProvider>
-                  <View style={styles.mainContainer}>
-                    {renderScreen()}
-                    <StatusBar style="auto" />
-                    
-                    {isAppSettingsVisible && (
-                      <Modal
-                        visible={isAppSettingsVisible}
-                        animationType="slide"
-                        transparent={false}
-                        onRequestClose={handleCloseSettings}
-                        statusBarTranslucent={false}
-                      >
-                        <SettingsScreen 
-                          onClose={handleCloseSettings}
-                        />
-                      </Modal>
-                    )}
-                  </View>
+                  <FoodProvider>
+                    <View style={styles.mainContainer}>
+                      {renderScreen()}
+                      <StatusBar style="auto" />
+                      
+                      {isAppSettingsVisible && (
+                        <Modal
+                          visible={isAppSettingsVisible}
+                          animationType="slide"
+                          transparent={false}
+                          onRequestClose={handleCloseSettings}
+                          statusBarTranslucent={false}
+                        >
+                          <SettingsScreen 
+                            onClose={handleCloseSettings}
+                          />
+                        </Modal>
+                      )}
+                    </View>
+                  </FoodProvider>
                 </PlacesProvider>
               </MoodsProvider>
             </MemoriesProvider>

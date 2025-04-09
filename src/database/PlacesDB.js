@@ -152,7 +152,8 @@ export const getAllPlaces = async () => {
 export const getPlaceById = async (placeId) => {
   await ensureDatabase();
   try {
-    const result = await db.getAsync(`
+    // Use getAllAsync instead of getAsync, and take the first result if available
+    const results = await db.getAllAsync(`
       SELECT p.*, 
              GROUP_CONCAT(pm.mood_id) as mood_ids
       FROM places p
@@ -160,10 +161,12 @@ export const getPlaceById = async (placeId) => {
       WHERE p.id = ?
       GROUP BY p.id
     `, [placeId]);
-    return result;
+    
+    // Return the first result or null if no results
+    return results && results.length > 0 ? results[0] : null;
   } catch (error) {
     console.error('Error getting place by id:', error);
-    throw error;
+    return null; // Return null instead of throwing to avoid app crashes
   }
 };
 
