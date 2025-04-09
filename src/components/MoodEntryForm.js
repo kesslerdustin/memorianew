@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView, Switch, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { EMOTIONS, ACTIVITY_CATEGORIES } from '../data/models';
-import { saveMoodEntry, generateId } from '../database/database';
+import { saveMoodEntry, generateId } from '../database/MoodsDB';
 import { useLanguage } from '../context/LanguageContext';
 import { useVisualStyle, VISUAL_STYLES, getRatingColor } from '../context/VisualStyleContext';
 import * as Location from 'expo-location';

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { getAllMoods } from '../database/MoodsDB';
+import { getMoodEntries } from '../database/MoodsDB';
 
 const MoodsContext = createContext();
 
@@ -13,7 +13,8 @@ export const MoodsProvider = ({ children }) => {
 
   const loadMoods = async () => {
     try {
-      const loadedMoods = await getAllMoods();
+      // Get mood entries with higher limit to ensure we get all entries
+      const loadedMoods = await getMoodEntries(1000, 0, true);
       setMoods(loadedMoods);
     } catch (error) {
       console.error('Error loading moods:', error);

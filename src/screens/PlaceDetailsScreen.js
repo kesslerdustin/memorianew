@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, FlatList, Dimensions, Activit
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker } from 'react-native-maps';
 import { usePlaces } from '../context/PlacesContext';
-import { getMoodEntries } from '../database/database';
+import { getMoodEntries } from '../database/MoodsDB';
 import { useLanguage } from '../context/LanguageContext';
 import { useVisualStyle } from '../context/VisualStyleContext';
 

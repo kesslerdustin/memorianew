@@ -4,7 +4,7 @@ import { usePlaces } from '../context/PlacesContext';
 import { useMoods } from '../context/MoodsContext';
 import AddEditPlaceScreen from './AddEditPlaceScreen';
 import PlaceDetailsScreen from './PlaceDetailsScreen';
-import { getMoodEntries } from '../database/database';
+import { getMoodEntries } from '../database/MoodsDB';
 import MapView, { Marker } from 'react-native-maps';
 
 const { width } = Dimensions.get('window');

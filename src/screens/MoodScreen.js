@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getMoodEntries, initDatabase, resetDatabase } from '../database/database';
+import { getMoodEntries, initDatabase, resetDatabase } from '../database/MoodsDB';
 import MoodEntryForm from '../components/MoodEntryForm';
 import MoodHistory from '../components/MoodHistory';
 import QuickMoodEntry from '../components/QuickMoodEntry';
