@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
 import { getMoodEntries, getDatabaseStats } from '../utils/database';
 import { EMOTIONS, ACTIVITY_CATEGORIES } from '../data/models';
+import { useLanguage } from '../context/LanguageContext';
 
 /**
  * MoodAnalytics component for visualizing mood data and providing insights
  * Implements the "Insightful Visual Analytics" section from mood.txt
  */
 const MoodAnalytics = ({ navigation, timeRange = 'week' }) => {
+  const { t } = useLanguage();
   const [moodData, setMoodData] = useState([]);
   const [stats, setStats] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTimeRange, setActiveTimeRange] = useState(timeRange);
   const [insights, setInsights] = useState([]);
+  const [activeView, setActiveView] = useState('overview'); // 'overview', 'mood', 'survey', 'calendar'
   
   // Screen dimensions for charts
   const screenWidth = Dimensions.get('window').width;
@@ -53,6 +56,7 @@ const MoodAnalytics = ({ navigation, timeRange = 'week' }) => {
       case 'week': return 50; // About a week of entries
       case 'month': return 100; // About a month of entries
       case 'year': return 365; // A year of entries
+      case 'all': return 1000; // All entries
       default: return 50;
     }
   };
@@ -92,6 +96,24 @@ const MoodAnalytics = ({ navigation, timeRange = 'week' }) => {
         insights.push(`Your mood appears to be ${trend} recently.`);
       } else {
         insights.push('Your mood has been relatively stable recently.');
+      }
+    }
+    
+    // Check for mood swings
+    if (entries.length > 10) {
+      const moodChanges = [];
+      for (let i = 1; i < entries.length; i++) {
+        moodChanges.push(Math.abs(entries[i].rating - entries[i-1].rating));
+      }
+      
+      const avgMoodChange = moodChanges.reduce((sum, change) => sum + change, 0) / moodChanges.length;
+      
+      if (avgMoodChange > 1.5) {
+        insights.push('You seem to be experiencing significant mood swings.');
+      } else if (avgMoodChange > 1.0) {
+        insights.push('Your mood has moderate variability throughout the day.');
+      } else {
+        insights.push('Your mood is relatively consistent throughout the day.');
       }
     }
     
@@ -297,268 +319,155 @@ const MoodAnalytics = ({ navigation, timeRange = 'week' }) => {
     return insights;
   };
   
-  // Render mood distribution chart
+  // Render the mood distribution graph
   const renderMoodDistribution = () => {
-    if (moodData.length === 0) return null;
+    if (!moodData || moodData.length === 0) {
+      return (
+        <View style={styles.chartPlaceholder}>
+          <Text>{t('noDataToDisplay')}</Text>
+        </View>
+      );
+    }
     
-    // Count entries by rating
-    const distribution = [0, 0, 0, 0, 0]; // Ratings 1-5
+    // Count occurrences of each rating
+    const ratings = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
     moodData.forEach(entry => {
-      distribution[entry.rating - 1]++;
+      ratings[entry.rating] = (ratings[entry.rating] || 0) + 1;
     });
     
-    const maxCount = Math.max(...distribution);
+    // Calculate bar widths based on counts
+    const maxCount = Math.max(...Object.values(ratings));
+    const barMaxWidth = screenWidth - 120; // Leave space for labels
     
     return (
       <View style={styles.chartContainer}>
-        <Text style={styles.chartTitle}>Mood Distribution</Text>
-        <View style={styles.barChart}>
-          {distribution.map((count, index) => {
-            const barHeight = maxCount > 0 ? (count / maxCount) * 150 : 0;
-            return (
-              <View key={index} style={styles.barContainer}>
-                <Text style={styles.barLabel}>{count}</Text>
+        <Text style={styles.chartTitle}>{t('moodDistribution')}</Text>
+        {Object.entries(ratings).map(([rating, count]) => {
+          const percentage = maxCount > 0 ? (count / maxCount) * 100 : 0;
+          return (
+            <View key={rating} style={styles.barChartRow}>
+              <View style={styles.barChartLabelContainer}>
+                <Text style={styles.barChartLabel}>{rating}</Text>
+                <Text style={styles.barChartEmoji}>{getMoodEmoji(parseInt(rating))}</Text>
+              </View>
+              <View style={styles.barContainer}>
                 <View 
                   style={[
                     styles.bar, 
                     { 
-                      height: barHeight > 0 ? barHeight : 5,
-                      backgroundColor: getMoodColor(index + 1)
+                      width: `${percentage}%`, 
+                      backgroundColor: getMoodColor(parseInt(rating))
                     }
-                  ]} 
+                  ]}
                 />
-                <Text style={styles.barAxisLabel}>{index + 1}</Text>
+                <Text style={styles.barText}>{count}</Text>
               </View>
-            );
-          })}
-        </View>
-        <Text style={styles.chartCaption}>Distribution of mood ratings (1-5)</Text>
+            </View>
+          );
+        })}
       </View>
     );
   };
   
-  // Render emotion word cloud (simplified version)
-  const renderEmotionCloud = () => {
-    if (moodData.length === 0) return null;
+  // Render graph of mood over time
+  const renderMoodOverTime = () => {
+    if (!moodData || moodData.length < 3) {
+      return (
+        <View style={styles.chartPlaceholder}>
+          <Text>{t('notEnoughDataForTrend')}</Text>
+        </View>
+      );
+    }
     
-    // Count entries by emotion
-    const emotionCounts = {};
-    moodData.forEach(entry => {
-      emotionCounts[entry.emotion] = (emotionCounts[entry.emotion] || 0) + 1;
-    });
-    
-    // Convert to array and sort by frequency
-    const sortedEmotions = Object.entries(emotionCounts)
-      .map(([emotion, count]) => ({ 
-        emotion, 
-        count,
-        details: EMOTIONS.find(e => e.value === emotion) || { label: emotion, emoji: '😐' }
-      }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 6); // Show top 6 emotions
-    
+    // In a real implementation, you'd use a charting library here
     return (
       <View style={styles.chartContainer}>
-        <Text style={styles.chartTitle}>Common Emotions</Text>
-        <View style={styles.emotionCloud}>
-          {sortedEmotions.map((item, index) => (
-            <View key={index} style={styles.emotionItem}>
-              <Text style={styles.emotionEmoji}>{item.details.emoji}</Text>
-              <Text style={styles.emotionLabel}>{item.details.label}</Text>
-              <Text style={styles.emotionCount}>{item.count}×</Text>
-            </View>
-          ))}
+        <Text style={styles.chartTitle}>{t('moodOverTime')}</Text>
+        <View style={styles.lineChartPlaceholder}>
+          <Text style={styles.placeholderText}>{t('moodTrendChart')}</Text>
+          {/* 
+            Normally, you would render a real chart here using a library like:
+            
+            <LineChart
+              data={{
+                labels: [...],
+                datasets: [{
+                  data: moodData.map(entry => entry.rating).reverse()
+                }]
+              }}
+              width={screenWidth - 40}
+              height={220}
+              chartConfig={{...}}
+            />
+          */}
         </View>
       </View>
     );
   };
   
-  // Render location mood correlations
-  const renderLocationCorrelations = () => {
-    if (moodData.length === 0) return null;
+  // Render mood swings / variability chart
+  const renderMoodVariability = () => {
+    if (!moodData || moodData.length < 5) {
+      return (
+        <View style={styles.chartPlaceholder}>
+          <Text>{t('notEnoughDataForVariability')}</Text>
+        </View>
+      );
+    }
     
-    // Filter entries with location data
-    const entriesWithLocation = moodData.filter(entry => entry.location);
-    if (entriesWithLocation.length < 5) return null;
-    
-    // Calculate average mood by location
-    const locationStats = {};
-    
-    entriesWithLocation.forEach(entry => {
-      if (!locationStats[entry.location]) {
-        locationStats[entry.location] = { sum: 0, count: 0 };
-      }
-      locationStats[entry.location].sum += entry.rating;
-      locationStats[entry.location].count += 1;
-    });
-    
-    // Convert to array and sort by average mood
-    const locationData = Object.entries(locationStats)
-      .map(([location, stats]) => ({
-        location,
-        avg: stats.sum / stats.count,
-        count: stats.count
-      }))
-      .filter(item => item.count >= 2) // Need at least 2 entries for meaningful data
-      .sort((a, b) => b.avg - a.avg)
-      .slice(0, 5); // Show top 5 locations
-    
-    if (locationData.length === 0) return null;
-    
+    // Calculate variability by day
+    // For demonstration, we'll just use a placeholder
     return (
       <View style={styles.chartContainer}>
-        <Text style={styles.chartTitle}>Location Mood Impact</Text>
-        <View style={styles.locationChart}>
-          {locationData.map((item, index) => (
-            <View key={index} style={styles.locationItem}>
-              <Text style={styles.locationName}>{item.location}</Text>
-              <View style={styles.locationBarContainer}>
-                <View 
-                  style={[
-                    styles.locationBar, 
-                    { 
-                      width: `${(item.avg / 5) * 100}%`,
-                      backgroundColor: getMoodColor(Math.round(item.avg))
-                    }
-                  ]} 
-                />
-                <Text style={styles.locationRating}>{item.avg.toFixed(1)}</Text>
-              </View>
-              <Text style={styles.locationCount}>{item.count} entries</Text>
-            </View>
-          ))}
+        <Text style={styles.chartTitle}>{t('moodVariability')}</Text>
+        <View style={styles.lineChartPlaceholder}>
+          <Text style={styles.placeholderText}>{t('moodVariabilityChart')}</Text>
         </View>
       </View>
     );
   };
   
-  // Render social context correlations
-  const renderSocialContextCorrelations = () => {
-    if (moodData.length === 0) return null;
-    
-    // Filter entries with social context data
-    const entriesWithContext = moodData.filter(entry => entry.socialContext);
-    if (entriesWithContext.length < 5) return null;
-    
-    // Calculate average mood by social context
-    const contextStats = {};
-    
-    entriesWithContext.forEach(entry => {
-      if (!contextStats[entry.socialContext]) {
-        contextStats[entry.socialContext] = { sum: 0, count: 0 };
-      }
-      contextStats[entry.socialContext].sum += entry.rating;
-      contextStats[entry.socialContext].count += 1;
-    });
-    
-    // Convert to array and sort by average mood
-    const contextData = Object.entries(contextStats)
-      .map(([context, stats]) => ({
-        context,
-        avg: stats.sum / stats.count,
-        count: stats.count
-      }))
-      .filter(item => item.count >= 2) // Need at least 2 entries for meaningful data
-      .sort((a, b) => b.avg - a.avg)
-      .slice(0, 5); // Show top 5 contexts
-    
-    if (contextData.length === 0) return null;
-    
+  // Render calendar view with mood data
+  const renderCalendarView = () => {
+    // In a real implementation, you'd use a calendar library
+    // For now, render a placeholder explaining the feature
+    return (
+      <View style={styles.calendarContainer}>
+        <Text style={styles.chartTitle}>{t('moodCalendar')}</Text>
+        <View style={styles.calendarPlaceholder}>
+          <Text style={styles.placeholderText}>{t('calendarViewDescription')}</Text>
+        </View>
+      </View>
+    );
+  };
+  
+  // Render scientific survey scores over time
+  const renderSurveyScores = () => {
+    // In a real implementation, you'd need to filter mood entries 
+    // that have associated survey results
     return (
       <View style={styles.chartContainer}>
-        <Text style={styles.chartTitle}>Social Context Impact</Text>
-        <View style={styles.socialContextChart}>
-          {contextData.map((item, index) => (
-            <View key={index} style={styles.contextItem}>
-              <Text style={styles.contextName}>{item.context}</Text>
-              <View style={styles.contextBarContainer}>
-                <View 
-                  style={[
-                    styles.contextBar, 
-                    { 
-                      width: `${(item.avg / 5) * 100}%`,
-                      backgroundColor: getMoodColor(Math.round(item.avg))
-                    }
-                  ]} 
-                />
-                <Text style={styles.contextRating}>{item.avg.toFixed(1)}</Text>
-              </View>
-              <Text style={styles.contextCount}>{item.count} entries</Text>
-            </View>
-          ))}
+        <Text style={styles.chartTitle}>{t('surveyScores')}</Text>
+        <View style={styles.lineChartPlaceholder}>
+          <Text style={styles.placeholderText}>{t('surveyScoresChart')}</Text>
         </View>
       </View>
     );
   };
   
-  // Render weather mood correlations
-  const renderWeatherCorrelations = () => {
-    if (moodData.length === 0) return null;
-    
-    // Filter entries with weather data
-    const entriesWithWeather = moodData.filter(entry => entry.weather);
-    if (entriesWithWeather.length < 5) return null;
-    
-    // Calculate average mood by weather
-    const weatherStats = {};
-    
-    entriesWithWeather.forEach(entry => {
-      if (!weatherStats[entry.weather]) {
-        weatherStats[entry.weather] = { sum: 0, count: 0 };
-      }
-      weatherStats[entry.weather].sum += entry.rating;
-      weatherStats[entry.weather].count += 1;
-    });
-    
-    // Convert to array and sort by average mood
-    const weatherData = Object.entries(weatherStats)
-      .map(([weather, stats]) => ({
-        weather,
-        avg: stats.sum / stats.count,
-        count: stats.count
-      }))
-      .filter(item => item.count >= 2) // Need at least 2 entries for meaningful data
-      .sort((a, b) => b.avg - a.avg);
-    
-    if (weatherData.length === 0) return null;
-    
-    // Emoji mapping for weather conditions
-    const weatherEmojis = {
-      'Sunny': '☀️',
-      'Cloudy': '☁️',
-      'Rainy': '🌧️',
-      'Stormy': '⛈️',
-      'Snowy': '❄️',
-      'Foggy': '🌫️',
-      'Hot': '🔥',
-      'Cold': '🧊'
+  // Get emoji for mood rating
+  const getMoodEmoji = (rating) => {
+    const emojis = {
+      1: '😢',
+      2: '😕',
+      3: '😐',
+      4: '🙂',
+      5: '😊'
     };
-    
-    return (
-      <View style={styles.chartContainer}>
-        <Text style={styles.chartTitle}>Weather Impact</Text>
-        <View style={styles.weatherChart}>
-          {weatherData.map((item, index) => (
-            <View key={index} style={styles.weatherItem}>
-              <Text style={styles.weatherEmoji}>
-                {weatherEmojis[item.weather] || '🌡️'}
-              </Text>
-              <Text style={styles.weatherName}>{item.weather}</Text>
-              <Text style={[
-                styles.weatherRating,
-                { color: getMoodColor(Math.round(item.avg)) }
-              ]}>
-                {item.avg.toFixed(1)}
-              </Text>
-              <Text style={styles.weatherCount}>{item.count} entries</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-    );
+    return emojis[rating] || '❓';
   };
   
-  // Get color based on mood rating
+  // Get color for mood rating
   const getMoodColor = (rating) => {
     const colors = {
       1: '#E57373', // Red
@@ -570,77 +479,149 @@ const MoodAnalytics = ({ navigation, timeRange = 'week' }) => {
     return colors[rating] || '#FFD54F';
   };
   
+  // Render loading state
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#FFD54F" />
+        <Text style={styles.loadingText}>{t('loadingMoodData')}</Text>
+      </View>
+    );
+  }
+  
   return (
     <ScrollView style={styles.container}>
-      <Text style={styles.title}>Mood Analytics</Text>
       {/* Time range selector */}
       <View style={styles.timeRangeSelector}>
-        {['day', 'week', 'month', 'year'].map((range) => (
+        <Text style={styles.sectionTitle}>{t('timeRange')}</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.timeRangeButtons}>
           <TouchableOpacity
-            key={range}
-            style={[
-              styles.timeRangeButton,
-              activeTimeRange === range && styles.activeTimeRange
-            ]}
-            onPress={() => setActiveTimeRange(range)}
+            style={[styles.timeRangeButton, activeTimeRange === 'day' && styles.activeTimeRange]}
+            onPress={() => setActiveTimeRange('day')}
           >
-            <Text 
-              style={[
-                styles.timeRangeText,
-                activeTimeRange === range && styles.activeTimeRangeText
-              ]}
-            >
-              {range.charAt(0).toUpperCase() + range.slice(1)}
-            </Text>
+            <Text style={styles.timeRangeButtonText}>{t('day')}</Text>
           </TouchableOpacity>
-        ))}
+          
+          <TouchableOpacity
+            style={[styles.timeRangeButton, activeTimeRange === 'week' && styles.activeTimeRange]}
+            onPress={() => setActiveTimeRange('week')}
+          >
+            <Text style={styles.timeRangeButtonText}>{t('week')}</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.timeRangeButton, activeTimeRange === 'month' && styles.activeTimeRange]}
+            onPress={() => setActiveTimeRange('month')}
+          >
+            <Text style={styles.timeRangeButtonText}>{t('month')}</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.timeRangeButton, activeTimeRange === 'year' && styles.activeTimeRange]}
+            onPress={() => setActiveTimeRange('year')}
+          >
+            <Text style={styles.timeRangeButtonText}>{t('year')}</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.timeRangeButton, activeTimeRange === 'all' && styles.activeTimeRange]}
+            onPress={() => setActiveTimeRange('all')}
+          >
+            <Text style={styles.timeRangeButtonText}>{t('allTime')}</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </View>
       
-      {/* Insights section */}
-      <View style={styles.insightsContainer}>
-        <Text style={styles.sectionTitle}>Insights</Text>
-        {insights.map((insight, index) => (
-          <View key={index} style={styles.insightItem}>
-            <Text style={styles.insightIcon}>💡</Text>
-            <Text style={styles.insightText}>{insight}</Text>
-          </View>
-        ))}
+      {/* View selector tabs */}
+      <View style={styles.viewSelector}>
+        <TouchableOpacity
+          style={[styles.viewTab, activeView === 'overview' && styles.activeViewTab]}
+          onPress={() => setActiveView('overview')}
+        >
+          <Text style={styles.viewTabText}>{t('overview')}</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={[styles.viewTab, activeView === 'mood' && styles.activeViewTab]}
+          onPress={() => setActiveView('mood')}
+        >
+          <Text style={styles.viewTabText}>{t('moodGraphs')}</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={[styles.viewTab, activeView === 'survey' && styles.activeViewTab]}
+          onPress={() => setActiveView('survey')}
+        >
+          <Text style={styles.viewTabText}>{t('surveyResults')}</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={[styles.viewTab, activeView === 'calendar' && styles.activeViewTab]}
+          onPress={() => setActiveView('calendar')}
+        >
+          <Text style={styles.viewTabText}>{t('calendar')}</Text>
+        </TouchableOpacity>
       </View>
       
-      {/* Mood distribution chart */}
-      {renderMoodDistribution()}
-      
-      {/* Emotion cloud */}
-      {renderEmotionCloud()}
-      
-      {/* Location correlations */}
-      {renderLocationCorrelations()}
-      
-      {/* Social context correlations */}
-      {renderSocialContextCorrelations()}
-      
-      {/* Weather correlations */}
-      {renderWeatherCorrelations()}
-      
-      {/* Summary stats */}
-      {stats && (
-        <View style={styles.statsContainer}>
-          <Text style={styles.sectionTitle}>Summary</Text>
-          <View style={styles.statsGrid}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{stats.moodEntries || 0}</Text>
-              <Text style={styles.statLabel}>Entries</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{moodData.length > 0 ? (moodData.reduce((sum, entry) => sum + entry.rating, 0) / moodData.length).toFixed(1) : '-'}</Text>
-              <Text style={styles.statLabel}>Avg. Mood</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{stats.tags || 0}</Text>
-              <Text style={styles.statLabel}>Tags Used</Text>
-            </View>
+      {/* Main content based on active view */}
+      {activeView === 'overview' && (
+        <>
+          {/* Insights */}
+          <View style={styles.insightsContainer}>
+            <Text style={styles.sectionTitle}>{t('moodInsights')}</Text>
+            {insights.map((insight, index) => (
+              <View key={index} style={styles.insightItem}>
+                <Text style={styles.insightText}>{insight}</Text>
+              </View>
+            ))}
           </View>
-        </View>
+          
+          {/* Summary stats */}
+          {stats && (
+            <View style={styles.statsContainer}>
+              <Text style={styles.sectionTitle}>{t('summary')}</Text>
+              <View style={styles.statsGrid}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{stats.moodEntries || 0}</Text>
+                  <Text style={styles.statLabel}>{t('entries')}</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>
+                    {moodData.length > 0 ? (moodData.reduce((sum, entry) => sum + entry.rating, 0) / moodData.length).toFixed(1) : '-'}
+                  </Text>
+                  <Text style={styles.statLabel}>{t('avgMood')}</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{stats.tags || 0}</Text>
+                  <Text style={styles.statLabel}>{t('tagsUsed')}</Text>
+                </View>
+              </View>
+            </View>
+          )}
+          
+          {/* Preview of mood distribution */}
+          {renderMoodDistribution()}
+        </>
+      )}
+      
+      {activeView === 'mood' && (
+        <>
+          {renderMoodDistribution()}
+          {renderMoodOverTime()}
+          {renderMoodVariability()}
+        </>
+      )}
+      
+      {activeView === 'survey' && (
+        <>
+          {renderSurveyScores()}
+        </>
+      )}
+      
+      {activeView === 'calendar' && (
+        <>
+          {renderCalendarView()}
+        </>
       )}
     </ScrollView>
   );
@@ -651,167 +632,106 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f5f5',
     padding: 16,
-    paddingTop: 12,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    marginTop: 12,
-    marginHorizontal: 16,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
   },
   timeRangeSelector: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     marginBottom: 16,
-    marginTop: 0,
-    backgroundColor: '#EEEEEE',
-    borderRadius: 8,
-    padding: 4,
+  },
+  timeRangeButtons: {
+    flexDirection: 'row',
+    marginTop: 8,
   },
   timeRangeButton: {
-    flex: 1,
-    padding: 8,
-    alignItems: 'center',
-    borderRadius: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#eee',
+    borderRadius: 20,
+    marginRight: 8,
   },
   activeTimeRange: {
     backgroundColor: '#FFD54F',
   },
-  timeRangeText: {
-    fontSize: 14,
-    color: '#666',
+  timeRangeButtonText: {
+    fontWeight: '500',
   },
-  activeTimeRangeText: {
-    color: '#000',
+  viewSelector: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    backgroundColor: '#eee',
+    borderRadius: 8,
+    padding: 4,
+  },
+  viewTab: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 6,
+  },
+  activeViewTab: {
+    backgroundColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+    elevation: 1,
+  },
+  viewTabText: {
+    fontSize: 12,
+  },
+  sectionTitle: {
+    fontSize: 18,
     fontWeight: 'bold',
+    marginBottom: 8,
   },
   insightsContainer: {
     backgroundColor: 'white',
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
-    elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 12,
+    elevation: 2,
   },
   insightItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  insightIcon: {
-    fontSize: 18,
-    marginRight: 8,
+    backgroundColor: '#f9f9f9',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
   },
   insightText: {
-    flex: 1,
-    fontSize: 16,
+    fontSize: 14,
     color: '#444',
-  },
-  chartContainer: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    alignItems: 'center',
-  },
-  chartTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 16,
-    alignSelf: 'flex-start',
-  },
-  barChart: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    height: 180,
-    width: '100%',
-    paddingBottom: 25,
-  },
-  barContainer: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  bar: {
-    width: 30,
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 4,
-  },
-  barLabel: {
-    marginBottom: 4,
-    fontSize: 12,
-  },
-  barAxisLabel: {
-    position: 'absolute',
-    bottom: 0,
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  chartCaption: {
-    marginTop: 8,
-    fontSize: 12,
-    color: '#666',
-  },
-  emotionCloud: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    width: '100%',
-  },
-  emotionItem: {
-    margin: 8,
-    padding: 12,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 8,
-    alignItems: 'center',
-    width: 90,
-  },
-  emotionEmoji: {
-    fontSize: 28,
-    marginBottom: 4,
-  },
-  emotionLabel: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  emotionCount: {
-    fontSize: 12,
-    color: '#666',
   },
   statsContainer: {
     backgroundColor: 'white',
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
-    elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
+    elevation: 2,
   },
   statsGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginTop: 8,
   },
   statItem: {
     flex: 1,
     alignItems: 'center',
-    padding: 12,
   },
   statValue: {
     fontSize: 24,
@@ -819,109 +739,97 @@ const styles = StyleSheet.create({
     color: '#FFD54F',
   },
   statLabel: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#666',
     marginTop: 4,
   },
-  // Location chart styles
-  locationChart: {
-    width: '100%',
-  },
-  locationItem: {
-    marginBottom: 12,
-  },
-  locationName: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  locationBarContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 24,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 4,
-  },
-  locationBar: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  locationRating: {
-    marginLeft: 8,
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  locationCount: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 2,
-  },
-  
-  // Social context chart styles
-  socialContextChart: {
-    width: '100%',
-  },
-  contextItem: {
-    marginBottom: 12,
-  },
-  contextName: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  contextBarContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 24,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 4,
-  },
-  contextBar: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  contextRating: {
-    marginLeft: 8,
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  contextCount: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 2,
-  },
-  
-  // Weather chart styles
-  weatherChart: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-around',
-  },
-  weatherItem: {
-    width: '30%',
-    alignItems: 'center',
+  chartContainer: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
     marginBottom: 16,
-    padding: 8,
-    backgroundColor: '#f7f7f7',
-    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  weatherEmoji: {
-    fontSize: 28,
-    marginBottom: 4,
-  },
-  weatherName: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  weatherRating: {
+  chartTitle: {
     fontSize: 16,
     fontWeight: 'bold',
+    marginBottom: 16,
   },
-  weatherCount: {
-    fontSize: 10,
+  barChartRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  barChartLabelContainer: {
+    width: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  barChartLabel: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginRight: 4,
+  },
+  barChartEmoji: {
+    fontSize: 16,
+  },
+  barContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  bar: {
+    height: 20,
+    borderRadius: 4,
+  },
+  barText: {
+    marginLeft: 8,
+    fontSize: 12,
     color: '#666',
+  },
+  lineChartPlaceholder: {
+    height: 200,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  calendarContainer: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  calendarPlaceholder: {
+    height: 300,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  chartPlaceholder: {
+    height: 100,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  placeholderText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    padding: 16,
   },
 });
 

@@ -8,7 +8,7 @@ import QuickMoodEntry from '../components/QuickMoodEntry';
 import ScientificSurvey from '../components/ScientificSurvey';
 import MoodAnalytics from '../components/MoodAnalytics';
 import MoodEntryDetail from '../components/MoodEntryDetail';
-import SettingsScreen from './SettingsScreen';
+import MoodSettingsScreen from './MoodSettingsScreen';
 import { useLanguage } from '../context/LanguageContext';
 import { useVisualStyle } from '../context/VisualStyleContext';
 
@@ -64,7 +64,7 @@ const MoodScreen = ({ navigation }) => {
       try {
         // Try to use existing database
         await initDatabase();
-        loadMoodEntries();
+        loadMoodEntries(true);
       } catch (error) {
         console.error('Error setting up database:', error);
         setIsLoading(false);
@@ -84,6 +84,13 @@ const MoodScreen = ({ navigation }) => {
     
     maybeSuggestSurvey();
   }, []);
+
+  // Reload entries when switching to history view
+  useEffect(() => {
+    if (activeView === 'history') {
+      loadMoodEntries(true);
+    }
+  }, [activeView]);
 
   // Handle database reset
   const handleResetDatabase = async () => {
@@ -124,16 +131,24 @@ const MoodScreen = ({ navigation }) => {
 
     try {
       const currentPage = refresh ? 0 : page;
-      const entries = await getMoodEntries(PAGE_SIZE, currentPage * PAGE_SIZE);
+      // Make sure we're getting newest entries first
+      const entries = await getMoodEntries(PAGE_SIZE, currentPage * PAGE_SIZE, true);
+      
+      console.log(`Loaded ${entries.length} mood entries from database`);
       
       if (entries.length < PAGE_SIZE) {
         setHasMoreEntries(false);
       }
       
       if (refresh || currentPage === 0) {
+        console.log('Replacing mood entries with fresh data');
         setMoodEntries(entries);
       } else {
-        setMoodEntries([...moodEntries, ...entries]);
+        // Check for duplicates before merging arrays
+        const existingIds = new Set(moodEntries.map(entry => entry.id));
+        const uniqueNewEntries = entries.filter(entry => !existingIds.has(entry.id));
+        console.log(`Adding ${uniqueNewEntries.length} new entries to existing ${moodEntries.length}`);
+        setMoodEntries([...moodEntries, ...uniqueNewEntries]);
       }
       
       if (!refresh) {
@@ -149,17 +164,26 @@ const MoodScreen = ({ navigation }) => {
 
   // Handle saving a new mood entry
   const handleSaveMoodEntry = (newEntry) => {
+    // Add to state for immediate feedback
     setMoodEntries([newEntry, ...moodEntries]);
     setIsFormVisible(false);
     setSelectedRating(null);
     setSelectedEmotion(null);
-    setActiveView('history'); // Switch to history view after saving
+    
+    // Switch to history view and let the useEffect trigger a reload
+    setActiveView('history');
   };
 
   // Handle quick mood entry completion
   const handleQuickMoodEntry = (newEntry) => {
+    // Add to state for immediate feedback
     setMoodEntries([newEntry, ...moodEntries]);
     setSelectedRating(null);
+    
+    // If we're already on the history view, do a full refresh to make sure it appears
+    if (activeView === 'history') {
+      loadMoodEntries(true);
+    }
   };
 
   // Handle add details for a quick mood entry
@@ -223,6 +247,41 @@ const MoodScreen = ({ navigation }) => {
   // Handle closing settings screen
   const handleCloseSettings = () => {
     setIsSettingsVisible(false);
+  };
+
+  // Function to remove all mock data and keep only user entries
+  const clearMockEntries = async () => {
+    Alert.alert(
+      'Clear Demo Data', 
+      'This will remove all pre-generated demo entries and keep only the ones you have added.',
+      [
+        { text: 'Cancel', style: "cancel" },
+        { 
+          text: 'Clear Demo Data', 
+          style: "destructive",
+          onPress: async () => {
+            setIsLoading(true);
+            try {
+              // Create a temporary table with only user entries (from the last day)
+              const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+              
+              // Delete all entries older than 1 day
+              await db.execAsync(`
+                DELETE FROM mood_entries
+                WHERE entry_time < ?
+              `, [oneDayAgo]);
+              
+              loadMoodEntries(true);
+              Alert.alert('Success', 'All demo data has been cleared.');
+            } catch (error) {
+              console.error('Error clearing mock data:', error);
+              Alert.alert('Error', 'Failed to clear demo data.');
+              setIsLoading(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   // Render the main content based on active view
@@ -323,6 +382,15 @@ const MoodScreen = ({ navigation }) => {
                 </View>
               </View>
             )}
+            
+            {/* "Clear Demo Data" button */}
+            <TouchableOpacity
+              style={styles.clearDemoButton}
+              onPress={clearMockEntries}
+            >
+              <Text style={styles.clearDemoText}>Clear Demo Data</Text>
+            </TouchableOpacity>
+            
           </ScrollView>
         );
         
@@ -407,7 +475,7 @@ const MoodScreen = ({ navigation }) => {
         transparent={false}
         onRequestClose={handleCloseSettings}
       >
-        <SettingsScreen 
+        <MoodSettingsScreen 
           onClose={handleCloseSettings}
         />
       </Modal>
@@ -655,6 +723,24 @@ const styles = StyleSheet.create({
     height: '90%',
     width: '100%',
     paddingBottom: 20,
+  },
+  clearDemoButton: {
+    marginTop: 24,
+    marginBottom: 36,
+    alignSelf: 'center',
+    padding: 12,
+    backgroundColor: '#FFD54F',
+    borderRadius: 8,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
+  },
+  clearDemoText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
 });
 

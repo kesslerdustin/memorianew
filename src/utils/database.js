@@ -48,6 +48,9 @@ export async function resetDatabase() {
     console.log("Reinitializing database");
     await initDatabase();
     console.log("Database reset completed");
+    
+    // Generate mock data after reset
+    await generateMockData();
   } catch (error) {
     console.error("Failed to reset database:", error);
   }
@@ -112,6 +115,20 @@ export async function initDatabase() {
         );
       `);
       
+      console.log("Creating metadata table for extended mood data...");
+      // Create metadata table for extended data (location coords, weather details, etc.)
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS mood_entry_metadata (
+          id TEXT PRIMARY KEY,
+          mood_id TEXT NOT NULL,
+          metadata_type TEXT NOT NULL,
+          metadata_value TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (mood_id) REFERENCES mood_entries (id) 
+            ON DELETE CASCADE
+        );
+      `);
+      
       console.log("Creating activities table...");
       // Create activities for mood entries (many-to-many)
       await db.execAsync(`
@@ -133,6 +150,13 @@ export async function initDatabase() {
       `);
       
       console.log('Database initialized successfully');
+      
+      // Check if we need to generate mock data (if no entries exist)
+      const entriesCount = await getDatabaseStats();
+      if (!entriesCount.moodEntries || entriesCount.moodEntries === 0) {
+        console.log('No entries found, generating mock data...');
+        await generateMockData();
+      }
     } catch (tableError) {
       console.error('Error creating tables:', tableError);
       if (tableError.message) {
@@ -152,6 +176,255 @@ export async function initDatabase() {
       console.error('Error cause:', error.cause);
     }
     throw error;
+  }
+}
+
+/**
+ * Generate mock data for testing
+ * Creates a set of mood entries spanning the last year
+ * with various ratings, emotions, locations, etc.
+ * @returns {Promise<void>}
+ */
+export async function generateMockData() {
+  if (!db) {
+    await initDatabase();
+  }
+
+  try {
+    console.log("Generating mock mood entries...");
+    
+    // Define possible values for emotions, locations, etc.
+    const emotions = [
+      'happy', 'sad', 'angry', 'anxious', 'calm', 
+      'excited', 'tired', 'bored', 'grateful', 'confused',
+      'hopeful', 'content'
+    ];
+    
+    const locations = [
+      'Home', 'Work', 'School', 'Coffee Shop', 'Gym', 
+      'Park', 'Restaurant', 'Friends Place', 'Library'
+    ];
+    
+    const socialContexts = [
+      'Alone', 'With Friends', 'With Family', 'With Partner', 
+      'In a Crowd', 'With Colleagues', 'With Strangers'
+    ];
+    
+    const weatherConditions = [
+      'Sunny', 'Cloudy', 'Rainy', 'Stormy', 'Snowy', 'Foggy', 'Hot', 'Cold'
+    ];
+    
+    const tags = [
+      'work', 'study', 'exercise', 'relaxation', 'social', 'health', 
+      'stress', 'achievement', 'disappointment', 'excitement', 'boredom'
+    ];
+    
+    const activityTypes = {
+      'physical': ['Running', 'Yoga', 'Gym', 'Walking', 'Cycling', 'Swimming'],
+      'social': ['Party', 'Dinner', 'Coffee', 'Call', 'Meeting'],
+      'leisure': ['Reading', 'Movies', 'Gaming', 'Music', 'Cooking'],
+      'work': ['Meeting', 'Project', 'Deadline', 'Presentation'],
+      'self_care': ['Meditation', 'Journaling', 'Therapy', 'Rest']
+    };
+    
+    const notesTemplates = [
+      "Feeling [emotion] today because of [event].",
+      "Had a [adjective] day at [location].",
+      "Spent time [activity] which made me feel [emotion].",
+      "Woke up feeling [emotion] and it [improved/stayed the same/got worse].",
+      "[Weather] weather affected my mood today.",
+      "Had an interaction with [person] that left me feeling [emotion].",
+      "Taking some time for self-care today.",
+      "Stressed about [stressor] but trying to stay positive.",
+      "Celebrated a small win today!",
+      "Feeling overwhelmed with tasks and responsibilities.",
+      "Had a productive day and feeling accomplished.",
+      "Tired but satisfied with how the day went."
+    ];
+    
+    const adjectives = [
+      'great', 'terrible', 'okay', 'busy', 'relaxing', 
+      'stressful', 'exciting', 'boring', 'unusual', 'ordinary'
+    ];
+    
+    const events = [
+      'work', 'a conversation', 'the news', 'family matters', 
+      'achievements', 'setbacks', 'unexpected changes', 'health issues'
+    ];
+    
+    const activities = [
+      'exercising', 'reading', 'watching TV', 'working', 'socializing', 
+      'cooking', 'cleaning', 'shopping', 'studying', 'meditating'
+    ];
+    
+    const people = [
+      'a friend', 'a family member', 'a colleague', 'my partner', 
+      'a stranger', 'my boss', 'an old friend', 'a neighbor'
+    ];
+    
+    const stressors = [
+      'work deadlines', 'financial concerns', 'relationship issues', 
+      'health problems', 'family matters', 'personal projects'
+    ];
+    
+    // Function to generate random note
+    const generateNote = () => {
+      let template = notesTemplates[Math.floor(Math.random() * notesTemplates.length)];
+      
+      // Replace placeholders with random values
+      template = template.replace('[emotion]', emotions[Math.floor(Math.random() * emotions.length)]);
+      template = template.replace('[adjective]', adjectives[Math.floor(Math.random() * adjectives.length)]);
+      template = template.replace('[location]', locations[Math.floor(Math.random() * locations.length)]);
+      template = template.replace('[activity]', activities[Math.floor(Math.random() * activities.length)]);
+      template = template.replace('[improved/stayed the same/got worse]', ['improved', 'stayed the same', 'got worse'][Math.floor(Math.random() * 3)]);
+      template = template.replace('[Weather]', weatherConditions[Math.floor(Math.random() * weatherConditions.length)]);
+      template = template.replace('[person]', people[Math.floor(Math.random() * people.length)]);
+      template = template.replace('[stressor]', stressors[Math.floor(Math.random() * stressors.length)]);
+      template = template.replace('[event]', events[Math.floor(Math.random() * events.length)]);
+      
+      return template;
+    };
+    
+    // Generate entries for a year
+    const now = Date.now();
+    const oneYearAgo = now - (365 * 24 * 60 * 60 * 1000);
+    
+    // Create varying density of entries
+    // More entries in recent months, fewer in older months
+    const entryCountsByMonth = [
+      2,  // 1 year ago
+      2,
+      2,
+      3,
+      3,
+      4,
+      4,
+      5,
+      5,
+      5,
+      6,
+      6,  // 1 month ago
+      8   // Current month
+    ];
+    
+    let allEntries = [];
+    
+    // Generate entries for each month
+    for (let i = 0; i < entryCountsByMonth.length; i++) {
+      const entryCount = entryCountsByMonth[i];
+      const monthStart = new Date();
+      monthStart.setMonth(monthStart.getMonth() - (12 - i));
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+      
+      const monthEnd = new Date();
+      if (i < entryCountsByMonth.length - 1) {
+        monthEnd.setMonth(monthEnd.getMonth() - (11 - i));
+        monthEnd.setDate(0); // Last day of the previous month
+      }
+      monthEnd.setHours(23, 59, 59, 999);
+      
+      const monthDuration = monthEnd.getTime() - monthStart.getTime();
+      
+      for (let j = 0; j < entryCount; j++) {
+        // Distribute entries throughout the month
+        const entryTime = monthStart.getTime() + Math.random() * monthDuration;
+        const date = new Date(entryTime);
+        
+        // Generate some patterns in the data:
+        // - Mood tends to be better on weekends
+        // - Mood tends to be worse in the morning for some days
+        // - Some days have multiple entries showing mood swings
+        
+        let rating;
+        const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+        const hour = date.getHours();
+        const isMorning = hour < 12;
+        
+        // Weekend bias: tend to be happier
+        if (isWeekend) {
+          rating = Math.floor(Math.random() * 3) + 3; // 3-5
+        } 
+        // Morning bias: some people are grumpier in the morning
+        else if (isMorning && Math.random() < 0.4) {
+          rating = Math.floor(Math.random() * 2) + 1; // 1-2
+        } 
+        // Normal distribution
+        else {
+          rating = Math.floor(Math.random() * 5) + 1; // 1-5
+        }
+        
+        // Select an emotion that somewhat matches the rating
+        let emotionPool;
+        if (rating >= 4) {
+          emotionPool = ['happy', 'excited', 'grateful', 'content', 'hopeful', 'calm'];
+        } else if (rating === 3) {
+          emotionPool = ['calm', 'content', 'bored', 'tired'];
+        } else {
+          emotionPool = ['sad', 'angry', 'anxious', 'tired', 'bored', 'confused'];
+        }
+        
+        const emotion = emotionPool[Math.floor(Math.random() * emotionPool.length)];
+        
+        // Randomly assign location, social context, and weather
+        const location = Math.random() < 0.8 ? locations[Math.floor(Math.random() * locations.length)] : null;
+        const socialContext = Math.random() < 0.7 ? socialContexts[Math.floor(Math.random() * socialContexts.length)] : null;
+        const weather = Math.random() < 0.6 ? weatherConditions[Math.floor(Math.random() * weatherConditions.length)] : null;
+        
+        // Generate 0-3 random tags
+        const entryTags = [];
+        const tagCount = Math.floor(Math.random() * 4); // 0-3 tags
+        for (let k = 0; k < tagCount; k++) {
+          const tag = tags[Math.floor(Math.random() * tags.length)];
+          if (!entryTags.includes(tag)) {
+            entryTags.push(tag);
+          }
+        }
+        
+        // Generate 0-2 random activities
+        const entryActivities = {};
+        const activityCount = Math.floor(Math.random() * 3); // 0-2 activities
+        const activityTypeKeys = Object.keys(activityTypes);
+        for (let k = 0; k < activityCount; k++) {
+          const activityType = activityTypeKeys[Math.floor(Math.random() * activityTypeKeys.length)];
+          if (!entryActivities[activityType]) {
+            const activities = activityTypes[activityType];
+            entryActivities[activityType] = activities[Math.floor(Math.random() * activities.length)];
+          }
+        }
+        
+        // Create the entry
+        const entry = {
+          id: generateId(),
+          entry_time: entryTime,
+          rating,
+          emotion,
+          notes: Math.random() < 0.8 ? generateNote() : "",
+          location,
+          socialContext,
+          weather,
+          tags: entryTags,
+          activities: entryActivities,
+          created_at: new Date(entryTime).toISOString(),
+          updated_at: new Date(entryTime).toISOString()
+        };
+        
+        allEntries.push(entry);
+      }
+    }
+    
+    // Sort entries by time (newest first) - simulates the natural order from the DB
+    allEntries.sort((a, b) => b.entry_time - a.entry_time);
+    
+    // Add entries to database
+    for (const entry of allEntries) {
+      await saveMoodEntry(entry);
+    }
+    
+    console.log(`Generated ${allEntries.length} mock mood entries`);
+  } catch (error) {
+    console.error('Error generating mock data:', error);
   }
 }
 
@@ -237,6 +510,9 @@ export async function saveMoodEntry(moodEntry) {
     activities: moodEntry.activities || {},
     created_at: getTimestamp(),
     updated_at: getTimestamp(),
+    // Add metadata for weather and location if available
+    weatherData: moodEntry.weatherData || null,
+    locationData: moodEntry.locationData || null
   };
   
   // Validate that this entry has all required fields
@@ -251,36 +527,24 @@ export async function saveMoodEntry(moodEntry) {
   try {
     console.log("Saving mood entry with entry_time:", entryWithTimestamps.entry_time);
     
-    // Debug the entry values
-    console.log("Entry values:", {
-      id: entryWithTimestamps.id,
-      entry_time: entryWithTimestamps.entry_time,
-      rating: entryWithTimestamps.rating,
-      emotion: entryWithTimestamps.emotion
-    });
-    
-    // Use a direct SQL construction approach to debug the issue
-    // Explicitly cast all values to their proper types to avoid binding issues
-    const insertQuery = `
-      INSERT INTO mood_entries (
+    // Use parameterized query to avoid SQL injection
+    await db.runAsync(
+      `INSERT INTO mood_entries (
         id, entry_time, rating, emotion, notes, location, social_context, weather, created_at, updated_at
-      ) VALUES (
-        '${entryWithTimestamps.id}', 
-        ${parseInt(entryWithTimestamps.entry_time)}, 
-        ${parseInt(entryWithTimestamps.rating)}, 
-        '${entryWithTimestamps.emotion}', 
-        '${entryWithTimestamps.notes || ""}',
-        ${entryWithTimestamps.location ? `'${entryWithTimestamps.location}'` : 'NULL'},
-        ${entryWithTimestamps.socialContext ? `'${entryWithTimestamps.socialContext}'` : 'NULL'},
-        ${entryWithTimestamps.weather ? `'${entryWithTimestamps.weather}'` : 'NULL'},
-        '${entryWithTimestamps.created_at}',
-        '${entryWithTimestamps.updated_at}'
-      );
-    `;
-    
-    console.log("Executing SQL:", insertQuery);
-    
-    await db.execAsync(insertQuery);
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        entryWithTimestamps.id,
+        entryWithTimestamps.entry_time,
+        entryWithTimestamps.rating,
+        entryWithTimestamps.emotion,
+        entryWithTimestamps.notes,
+        entryWithTimestamps.location,
+        entryWithTimestamps.socialContext,
+        entryWithTimestamps.weather,
+        entryWithTimestamps.created_at,
+        entryWithTimestamps.updated_at
+      ]
+    );
     
     // Now that the entry is definitely created, add tags if any
     if (entryWithTimestamps.tags && entryWithTimestamps.tags.length > 0) {
@@ -289,11 +553,10 @@ export async function saveMoodEntry(moodEntry) {
           try {
             console.log("Inserting tag:", tag, "for mood entry:", entryWithTimestamps.id);
             const tagId = generateId();
-            const tagInsertQuery = `
-              INSERT INTO mood_tags (id, mood_id, tag_name)
-              VALUES ('${tagId}', '${entryWithTimestamps.id}', '${tag.trim()}');
-            `;
-            await db.execAsync(tagInsertQuery);
+            await db.runAsync(
+              `INSERT INTO mood_tags (id, mood_id, tag_name) VALUES (?, ?, ?)`,
+              [tagId, entryWithTimestamps.id, tag.trim()]
+            );
           } catch (tagError) {
             console.error('Error inserting tag:', tagError);
             // Continue with other tags even if one fails
@@ -309,16 +572,68 @@ export async function saveMoodEntry(moodEntry) {
           try {
             console.log("Inserting activity:", type, name, "for mood entry:", entryWithTimestamps.id);
             const activityId = generateId();
-            const activityInsertQuery = `
-              INSERT INTO mood_activities (id, mood_id, activity_type, activity_name)
-              VALUES ('${activityId}', '${entryWithTimestamps.id}', '${type}', '${name}');
-            `;
-            await db.execAsync(activityInsertQuery);
+            await db.runAsync(
+              `INSERT INTO mood_activities (id, mood_id, activity_type, activity_name) VALUES (?, ?, ?, ?)`,
+              [activityId, entryWithTimestamps.id, type, name]
+            );
           } catch (activityError) {
             console.error('Error inserting activity:', activityError);
             // Continue with other activities even if one fails
           }
         }
+      }
+    }
+    
+    // Save additional weather and location metadata if provided
+    if (entryWithTimestamps.weatherData || entryWithTimestamps.locationData) {
+      try {
+        // Create metadata table if it doesn't exist
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS mood_entry_metadata (
+            id TEXT PRIMARY KEY,
+            mood_id TEXT NOT NULL,
+            metadata_type TEXT NOT NULL,
+            metadata_value TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (mood_id) REFERENCES mood_entries (id) 
+              ON DELETE CASCADE
+          );
+        `);
+        
+        // Store weather data
+        if (entryWithTimestamps.weatherData) {
+          const weatherMetadataId = generateId();
+          await db.runAsync(
+            `INSERT INTO mood_entry_metadata (id, mood_id, metadata_type, metadata_value, created_at) 
+             VALUES (?, ?, ?, ?, ?)`,
+            [
+              weatherMetadataId,
+              entryWithTimestamps.id,
+              'weather',
+              JSON.stringify(entryWithTimestamps.weatherData),
+              getTimestamp()
+            ]
+          );
+        }
+        
+        // Store location data
+        if (entryWithTimestamps.locationData) {
+          const locationMetadataId = generateId();
+          await db.runAsync(
+            `INSERT INTO mood_entry_metadata (id, mood_id, metadata_type, metadata_value, created_at) 
+             VALUES (?, ?, ?, ?, ?)`,
+            [
+              locationMetadataId,
+              entryWithTimestamps.id,
+              'location',
+              JSON.stringify(entryWithTimestamps.locationData),
+              getTimestamp()
+            ]
+          );
+        }
+      } catch (metadataError) {
+        console.error('Error storing metadata:', metadataError);
+        // Proceed even if metadata saving fails
       }
     }
     
@@ -347,9 +662,10 @@ export async function saveMoodEntry(moodEntry) {
  * Get mood entries with pagination
  * @param {number} limit - Maximum number of entries to return
  * @param {number} offset - Number of entries to skip
+ * @param {boolean} newestFirst - Sort by entry_time DESC (true) or ASC (false)
  * @returns {Promise<Array>} Array of mood entries
  */
-export async function getMoodEntries(limit = 20, offset = 0) {
+export async function getMoodEntries(limit = 20, offset = 0, newestFirst = true) {
   if (!db) {
     await initDatabase();
   }
@@ -364,7 +680,7 @@ export async function getMoodEntries(limit = 20, offset = 0) {
       FROM 
         mood_entries e
       ORDER BY 
-        e.entry_time DESC
+        e.entry_time ${newestFirst ? 'DESC' : 'ASC'}
       LIMIT ? OFFSET ?
     `, [limit, offset]);
     
@@ -392,6 +708,29 @@ export async function getMoodEntries(limit = 20, offset = 0) {
         activities[item.activity_type] = item.activity_name;
       }
       
+      // Get metadata for this entry (location, weather details)
+      const metadataResult = await db.getAllAsync(
+        `SELECT metadata_type, metadata_value FROM mood_entry_metadata
+        WHERE mood_id = ?;`,
+        [entry.id]
+      );
+      
+      let weatherData = null;
+      let locationData = null;
+      
+      // Parse metadata items
+      for (const metadata of metadataResult) {
+        try {
+          if (metadata.metadata_type === 'weather') {
+            weatherData = JSON.parse(metadata.metadata_value);
+          } else if (metadata.metadata_type === 'location') {
+            locationData = JSON.parse(metadata.metadata_value);
+          }
+        } catch (parseError) {
+          console.error('Error parsing metadata:', parseError);
+        }
+      }
+      
       // Combine data and add to entries
       entries.push({
         id: entry.id,
@@ -403,7 +742,9 @@ export async function getMoodEntries(limit = 20, offset = 0) {
         socialContext: entry.socialContext,
         weather: entry.weather,
         tags,
-        activities
+        activities,
+        weatherData,
+        locationData
       });
     }
     
@@ -447,7 +788,7 @@ export async function getMoodEntryById(id) {
     const tagResult = await db.getAllAsync(
       `SELECT tag_name FROM mood_tags
       WHERE mood_id = ?;`,
-      [entry.id]
+      [id]
     );
     
     const tags = tagResult.map(row => row.tag_name);
@@ -456,7 +797,7 @@ export async function getMoodEntryById(id) {
     const activityResult = await db.getAllAsync(
       `SELECT activity_type, activity_name FROM mood_activities
       WHERE mood_id = ?;`,
-      [entry.id]
+      [id]
     );
     
     const activities = {};
@@ -464,7 +805,30 @@ export async function getMoodEntryById(id) {
       activities[item.activity_type] = item.activity_name;
     }
     
-    // Combine data
+    // Get metadata for this entry
+    const metadataResult = await db.getAllAsync(
+      `SELECT metadata_type, metadata_value FROM mood_entry_metadata
+      WHERE mood_id = ?;`,
+      [id]
+    );
+    
+    let weatherData = null;
+    let locationData = null;
+    
+    // Parse metadata items
+    for (const metadata of metadataResult) {
+      try {
+        if (metadata.metadata_type === 'weather') {
+          weatherData = JSON.parse(metadata.metadata_value);
+        } else if (metadata.metadata_type === 'location') {
+          locationData = JSON.parse(metadata.metadata_value);
+        }
+      } catch (parseError) {
+        console.error('Error parsing metadata:', parseError);
+      }
+    }
+    
+    // Combine data and return
     return {
       id: entry.id,
       entry_time: entry.entry_time,
@@ -475,10 +839,12 @@ export async function getMoodEntryById(id) {
       socialContext: entry.socialContext,
       weather: entry.weather,
       tags,
-      activities
+      activities,
+      weatherData,
+      locationData
     };
   } catch (error) {
-    console.error(`Error getting mood entry ${id}:`, error);
+    console.error("Error getting mood entry by id:", error);
     return null;
   }
 }

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../context/LanguageContext';
-import { useVisualStyle } from '../context/VisualStyleContext';
+import { useVisualStyle, VISUAL_STYLES } from '../context/VisualStyleContext';
 import { resetDatabase, generateMockData } from '../utils/database';
 
 const MoodSettingsScreen = ({ onClose }) => {
@@ -56,70 +56,9 @@ const MoodSettingsScreen = ({ onClose }) => {
     );
   };
 
-  // Handle generating mock data
-  const handleGenerateMockData = () => {
-    Alert.alert(
-      t('generateMockData'),
-      t('generateMockDataConfirmation'),
-      [
-        { text: t('cancel'), style: 'cancel' },
-        { 
-          text: t('generate'), 
-          onPress: async () => {
-            setIsProcessing(true);
-            try {
-              await generateMockData();
-              Alert.alert(
-                t('success'),
-                t('mockDataGeneratedSuccess'),
-                [{ text: t('ok') }]
-              );
-            } catch (error) {
-              console.error('Error generating mock data:', error);
-              Alert.alert(
-                t('error'),
-                t('mockDataGeneratedError'),
-                [{ text: t('ok') }]
-              );
-            } finally {
-              setIsProcessing(false);
-            }
-          }
-        }
-      ]
-    );
-  };
-
   // Render a section header
   const renderSectionHeader = (title) => (
     <Text style={styles.sectionHeader}>{title}</Text>
-  );
-
-  // Render settings option with a switch
-  const renderSwitchOption = (title, value, onValueChange, disabled = false) => (
-    <View style={styles.optionRow}>
-      <Text style={styles.optionText}>{title}</Text>
-      <Switch
-        value={value}
-        onValueChange={onValueChange}
-        disabled={disabled || isProcessing}
-        trackColor={{ false: '#767577', true: '#FFD54F' }}
-        thumbColor={value ? '#F5B400' : '#f4f3f4'}
-      />
-    </View>
-  );
-
-  // Render button option
-  const renderButtonOption = (title, onPress, destructive = false) => (
-    <TouchableOpacity 
-      style={[styles.buttonOption, destructive && styles.destructiveButton]}
-      onPress={onPress}
-      disabled={isProcessing}
-    >
-      <Text style={[styles.buttonText, destructive && styles.destructiveText]}>
-        {title}
-      </Text>
-    </TouchableOpacity>
   );
 
   // Render language selection option
@@ -177,11 +116,8 @@ const MoodSettingsScreen = ({ onClose }) => {
         {renderSectionHeader(t('language'))}
         <View style={styles.optionGroup}>
           <View style={styles.languageOptions}>
-            {renderLanguageOption('en', 'English')}
-            {renderLanguageOption('es', 'Español')}
-            {renderLanguageOption('fr', 'Français')}
-            {renderLanguageOption('de', 'Deutsch')}
-            {renderLanguageOption('ja', '日本語')}
+            {renderLanguageOption('english', 'English')}
+            {renderLanguageOption('german', 'Deutsch')}
           </View>
         </View>
 
@@ -189,47 +125,29 @@ const MoodSettingsScreen = ({ onClose }) => {
         {renderSectionHeader(t('visualStyle'))}
         <View style={styles.optionGroup}>
           <View style={styles.visualStyleOptions}>
-            {renderVisualStyleOption('emoji', t('emoji'))}
-            {renderVisualStyleOption('minimal', t('minimal'))}
-            {renderVisualStyleOption('colorful', t('colorful'))}
+            {renderVisualStyleOption(VISUAL_STYLES.SMILEYS, t('smileys'))}
+            {renderVisualStyleOption(VISUAL_STYLES.MINIMAL, t('minimal'))}
+            {renderVisualStyleOption(VISUAL_STYLES.ICONS, t('icons'))}
+            {renderVisualStyleOption(VISUAL_STYLES.SLIDER, t('slider'))}
           </View>
+          <Text style={styles.visualStyleDescription}>
+            {t('visualStyleDescription')}
+          </Text>
         </View>
 
-        {/* Notification section */}
-        {renderSectionHeader(t('notifications'))}
+        {/* Database management section */}
+        {renderSectionHeader(t('databaseManagement'))}
         <View style={styles.optionGroup}>
-          {renderSwitchOption(t('dailyReminder'), false, () => {})}
-          {renderSwitchOption(t('weeklyInsights'), true, () => {})}
-          {renderSwitchOption(t('surveyPrompts'), true, () => {})}
-        </View>
-
-        {/* Privacy section */}
-        {renderSectionHeader(t('privacy'))}
-        <View style={styles.optionGroup}>
-          {renderSwitchOption(t('storeLocation'), true, () => {})}
-          {renderSwitchOption(t('storeWeather'), true, () => {})}
-          {renderSwitchOption(t('anonymousAnalytics'), false, () => {})}
-        </View>
-
-        {/* Data management section */}
-        {renderSectionHeader(t('dataManagement'))}
-        <View style={styles.optionGroup}>
-          {renderButtonOption(t('exportData'), () => {})}
-          {renderButtonOption(t('importData'), () => {})}
-          {renderButtonOption(t('generateMockData'), handleGenerateMockData)}
-          {renderButtonOption(t('resetDatabase'), handleResetDatabase, true)}
-        </View>
-
-        {/* About section */}
-        {renderSectionHeader(t('about'))}
-        <View style={styles.optionGroup}>
-          {renderButtonOption(t('privacyPolicy'), () => {})}
-          {renderButtonOption(t('termsOfService'), () => {})}
-          {renderButtonOption(t('contactUs'), () => {})}
-        </View>
-
-        <View style={styles.versionContainer}>
-          <Text style={styles.versionText}>Memoria v1.0.0</Text>
+          <TouchableOpacity 
+            style={[styles.buttonOption, styles.destructiveButton]}
+            onPress={handleResetDatabase}
+            disabled={isProcessing}
+          >
+            <Text style={[styles.buttonText, styles.destructiveText]}>
+              {t('resetDatabase')}
+            </Text>
+          </TouchableOpacity>
+          <Text style={styles.warningText}>{t('resetWarning')}</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -287,32 +205,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     marginBottom: 16,
   },
-  optionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  optionText: {
-    fontSize: 16,
-  },
-  buttonOption: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  buttonText: {
-    fontSize: 16,
-    color: '#007AFF',
-  },
-  destructiveButton: {
-    // No special styling for the button background
-  },
-  destructiveText: {
-    color: '#FF3B30',
-  },
   languageOptions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -336,13 +228,15 @@ const styles = StyleSheet.create({
   },
   visualStyleOptions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     padding: 12,
+    justifyContent: 'space-between',
   },
   visualStyleOption: {
-    flex: 1,
+    width: '48%',
     paddingVertical: 12,
     alignItems: 'center',
-    margin: 4,
+    marginBottom: 8,
     borderRadius: 8,
     backgroundColor: '#f0f0f0',
   },
@@ -351,17 +245,39 @@ const styles = StyleSheet.create({
   },
   visualStyleText: {
     fontSize: 14,
+    fontWeight: '500',
   },
   selectedVisualStyleText: {
     fontWeight: 'bold',
   },
-  versionContainer: {
-    padding: 24,
-    alignItems: 'center',
+  visualStyleDescription: {
+    fontSize: 12,
+    color: '#666',
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    textAlign: 'center',
   },
-  versionText: {
-    fontSize: 14,
-    color: '#888',
+  buttonOption: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  buttonText: {
+    fontSize: 16,
+    color: '#007AFF',
+  },
+  destructiveButton: {
+    // No special styling for the button background
+  },
+  destructiveText: {
+    color: '#FF3B30',
+  },
+  warningText: {
+    fontSize: 12,
+    color: '#FF3B30',
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    textAlign: 'center',
   },
 });
 

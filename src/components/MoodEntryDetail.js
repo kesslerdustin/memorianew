@@ -176,40 +176,74 @@ const MoodEntryDetail = ({ entry, onClose, bottomInset = 0, topInset = 0, getTra
         {entry.notes ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t('notes')}</Text>
-            <View style={styles.notesContainer}>
-              <Text style={styles.notesText}>{safeRender(entry.notes)}</Text>
-            </View>
+            <Text style={styles.notes}>{safeRender(entry.notes)}</Text>
           </View>
         ) : null}
-
-        {/* Context Details */}
-        {(entry.location || entry.socialContext || entry.weather) ? (
+        
+        {/* Location Information */}
+        {entry.location ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t('context')}</Text>
+            <Text style={styles.sectionTitle}>{t('location')}</Text>
+            <Text style={styles.sectionContent}>{safeRender(entry.location)}</Text>
             
-            {/* Location */}
-            {entry.location ? (
-              <View style={styles.contextItem}>
-                <Text style={styles.contextLabel}>{t('location')}:</Text>
-                <Text style={styles.contextValue}>{safeRender(entry.location)}</Text>
+            {/* Show detailed location data if available */}
+            {entry.locationData && (
+              <View style={styles.detailedData}>
+                <Text style={styles.detailedLabel}>{t('coordinates')}</Text>
+                <Text style={styles.detailedValue}>
+                  {safeRender(entry.locationData.latitude)}, {safeRender(entry.locationData.longitude)}
+                </Text>
               </View>
-            ) : null}
-
-            {/* Social Context */}
-            {entry.socialContext ? (
-              <View style={styles.contextItem}>
-                <Text style={styles.contextLabel}>{t('social')}:</Text>
-                <Text style={styles.contextValue}>{safeRender(entry.socialContext)}</Text>
+            )}
+          </View>
+        ) : null}
+        
+        {/* Weather Information */}
+        {entry.weather ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t('weather')}</Text>
+            <Text style={styles.sectionContent}>{safeRender(entry.weather)}</Text>
+            
+            {/* Show detailed weather data if available */}
+            {entry.weatherData && (
+              <View style={styles.weatherDetails}>
+                {entry.weatherData.description && (
+                  <View style={styles.detailedData}>
+                    <Text style={styles.detailedLabel}>{t('description')}</Text>
+                    <Text style={styles.detailedValue}>{safeRender(entry.weatherData.description)}</Text>
+                  </View>
+                )}
+                
+                {entry.weatherData.feelsLike && (
+                  <View style={styles.detailedData}>
+                    <Text style={styles.detailedLabel}>{t('feelsLike')}</Text>
+                    <Text style={styles.detailedValue}>{safeRender(entry.weatherData.feelsLike)}°C</Text>
+                  </View>
+                )}
+                
+                {entry.weatherData.humidity && (
+                  <View style={styles.detailedData}>
+                    <Text style={styles.detailedLabel}>{t('humidity')}</Text>
+                    <Text style={styles.detailedValue}>{safeRender(entry.weatherData.humidity)}%</Text>
+                  </View>
+                )}
+                
+                {entry.weatherData.windSpeed && (
+                  <View style={styles.detailedData}>
+                    <Text style={styles.detailedLabel}>{t('windSpeed')}</Text>
+                    <Text style={styles.detailedValue}>{safeRender(entry.weatherData.windSpeed)} m/s</Text>
+                  </View>
+                )}
               </View>
-            ) : null}
-
-            {/* Weather */}
-            {entry.weather ? (
-              <View style={styles.contextItem}>
-                <Text style={styles.contextLabel}>{t('weather')}:</Text>
-                <Text style={styles.contextValue}>{safeRender(entry.weather)}</Text>
-              </View>
-            ) : null}
+            )}
+          </View>
+        ) : null}
+        
+        {/* Social Context */}
+        {entry.socialContext ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t('socialContext')}</Text>
+            <Text style={styles.sectionContent}>{safeRender(entry.socialContext)}</Text>
           </View>
         ) : null}
 
@@ -237,71 +271,69 @@ const MoodEntryDetail = ({ entry, onClose, bottomInset = 0, topInset = 0, getTra
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'white',
-    paddingHorizontal: 20,
+    backgroundColor: '#fff',
+    padding: 16,
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    justifyContent: 'space-between',
+    marginBottom: 16,
   },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
-    textAlign: 'center',
     flex: 1,
+    textAlign: 'center',
   },
   closeButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: '#f0f0f0',
-    flexDirection: 'row',
-    alignItems: 'center',
+    padding: 8,
   },
   closeButtonText: {
     fontSize: 16,
     color: '#4A90E2',
-    fontWeight: 'bold',
   },
   dateText: {
     fontSize: 16,
     color: '#666',
-    marginBottom: 20,
+    marginBottom: 16,
+    textAlign: 'center',
   },
   moodContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 24,
     backgroundColor: '#f9f9f9',
     padding: 16,
     borderRadius: 12,
   },
   ratingBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#FFD54F',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: 16,
   },
   ratingText: {
-    color: 'white',
-    fontWeight: 'bold',
     fontSize: 16,
+    fontWeight: 'bold',
+    color: 'white',
   },
   emotionContainer: {
-    flexDirection: 'row',
     alignItems: 'center',
   },
   emotionEmoji: {
     fontSize: 32,
-    marginRight: 8,
+    marginBottom: 4,
   },
   emotionLabel: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#444',
   },
   section: {
     marginBottom: 24,
@@ -312,52 +344,59 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#444',
+    color: '#333',
     marginBottom: 12,
   },
-  notesContainer: {
-    padding: 8,
-  },
-  notesText: {
+  notes: {
     fontSize: 16,
     color: '#333',
     lineHeight: 24,
   },
-  contextItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  contextLabel: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#555',
-    width: 80,
-  },
-  contextValue: {
+  sectionContent: {
     fontSize: 16,
     color: '#333',
+  },
+  detailedData: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 6, 
+    paddingLeft: 8,
+  },
+  detailedLabel: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#555',
+    width: 100,
+  },
+  detailedValue: {
+    fontSize: 14,
+    color: '#333',
+  },
+  weatherDetails: {
+    marginTop: 12,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+    padding: 10,
   },
   tagsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    marginTop: 8,
   },
   tag: {
     backgroundColor: '#E1F5FE',
-    borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    margin: 4,
+    borderRadius: 16,
+    marginRight: 8,
+    marginBottom: 8,
   },
   tagText: {
-    fontSize: 14,
-    color: '#4A90E2',
+    color: '#0288D1',
   },
   errorText: {
-    color: '#E57373',
+    color: '#B00020',
     fontStyle: 'italic',
-    fontSize: 14,
-    padding: 8,
   }
 });
 

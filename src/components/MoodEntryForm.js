@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView, Switch, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView, Switch, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { EMOTIONS, ACTIVITY_CATEGORIES } from '../data/models';
 import { saveMoodEntry, generateId } from '../utils/database';
 import { useLanguage } from '../context/LanguageContext';
 import { useVisualStyle, VISUAL_STYLES, getRatingColor } from '../context/VisualStyleContext';
+import * as Location from 'expo-location';
+import { fetchWeatherData } from '../utils/weather';
 
 const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = null, visualStyle, getMoodIcon }) => {
   const { t } = useLanguage();
@@ -86,6 +88,46 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
     try {
       // Create a new mood entry with extended data
       const currentTime = Date.now();
+      
+      // Prepare location data - store address string in main entry and full data in metadata
+      let locationString = null;
+      let locationData = null;
+      
+      if (locationEnabled && selectedLocation) {
+        // Store readable location in main entry
+        locationString = selectedLocation.address;
+        
+        // Store full location data for metadata
+        locationData = {
+          latitude: selectedLocation.latitude,
+          longitude: selectedLocation.longitude,
+          address: selectedLocation.address
+        };
+      }
+      
+      // Prepare weather data - store simple string in main entry and full data in metadata
+      let weatherString = null;
+      let weatherData = null;
+      
+      if (weatherEnabled && weather) {
+        // Store readable weather in main entry
+        weatherString = `${weather.condition}, ${weather.temperature}°C`;
+        
+        // Store full weather data for metadata
+        weatherData = {
+          condition: weather.condition,
+          description: weather.description,
+          temperature: weather.temperature,
+          feelsLike: weather.feelsLike,
+          icon: weather.icon,
+          humidity: weather.humidity,
+          windSpeed: weather.windSpeed,
+          locationName: weather.locationName,
+          country: weather.country,
+          timestamp: Date.now()
+        };
+      }
+      
       const newEntry = {
         id: generateId(),
         entry_time: currentTime,
@@ -95,9 +137,12 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
         notes,
         tags: selectedTags,
         activities: selectedActivities,
-        location: selectedLocation,
+        location: locationString,
         socialContext: selectedSocialContext,
-        weather: selectedWeather
+        weather: weatherString,
+        // Add detailed data for metadata storage
+        locationData: locationData,
+        weatherData: weatherData
       };
       
       console.log("Saving mood entry with data:", {
@@ -109,7 +154,9 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
         activities: Object.keys(newEntry.activities).length,
         location: newEntry.location,
         socialContext: newEntry.socialContext,
-        weather: newEntry.weather
+        weather: newEntry.weather,
+        hasLocationData: !!newEntry.locationData,
+        hasWeatherData: !!newEntry.weatherData
       });
       
       // Save the entry
@@ -254,7 +301,131 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
       </TouchableOpacity>
     );
   };
-  
+
+  const [locationEnabled, setLocationEnabled] = useState(false);
+  const [weatherEnabled, setWeatherEnabled] = useState(false);
+  const [weather, setWeather] = useState(null);
+  const [isLoadingWeather, setIsLoadingWeather] = useState(false);
+
+  // Request location permissions when location is enabled
+  useEffect(() => {
+    if (locationEnabled) {
+      getLocation();
+    }
+  }, [locationEnabled]);
+
+  // Fetch weather when location is available and weather is enabled
+  useEffect(() => {
+    if (selectedLocation && weatherEnabled) {
+      getWeather();
+    }
+  }, [selectedLocation, weatherEnabled]);
+
+  // Function to get current location
+  const getLocation = async () => {
+    setIsLoadingWeather(true);
+    try {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          t('locationPermission'),
+          t('locationPermissionDenied'),
+          [{ text: t('ok') }]
+        );
+        setLocationEnabled(false);
+        setIsLoadingWeather(false);
+        return;
+      }
+
+      let location = await Location.getCurrentPositionAsync({});
+      
+      // Get readable address
+      const addressResponse = await Location.reverseGeocodeAsync({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude
+      });
+
+      let address = '';
+      if (addressResponse && addressResponse.length > 0) {
+        const addressData = addressResponse[0];
+        address = [
+          addressData.name,
+          addressData.street,
+          addressData.city,
+          addressData.region,
+          addressData.country
+        ]
+          .filter(part => part)
+          .join(', ');
+
+        // Simplify to just city and country if available
+        if (addressData.city) {
+          address = addressData.city;
+          if (addressData.country) {
+            address += `, ${addressData.country}`;
+          }
+        }
+      }
+
+      setSelectedLocation({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        address: address || t('unknownLocation')
+      });
+    } catch (error) {
+      console.error('Error getting location:', error);
+      Alert.alert(
+        t('locationError'),
+        t('unableToGetLocation'),
+        [{ text: t('ok') }]
+      );
+      setLocationEnabled(false);
+    } finally {
+      setIsLoadingWeather(false);
+    }
+  };
+
+  // Function to get weather data
+  const getWeather = async () => {
+    if (!selectedLocation) return;
+
+    setIsLoadingWeather(true);
+    
+    try {
+      const weatherData = await fetchWeatherData(selectedLocation.latitude, selectedLocation.longitude);
+      
+      if (weatherData.isMockData) {
+        Alert.alert(
+          t('weatherNote'),
+          t('usingOfflineWeatherData'),
+          [{ text: t('ok') }]
+        );
+      }
+      
+      setWeather(weatherData);
+    } catch (error) {
+      console.error('Error fetching weather:', error);
+      
+      // Show more specific error for authentication issues
+      if (error.message && error.message.includes('401')) {
+        Alert.alert(
+          t('weatherAPIError'),
+          t('weatherAPIKeyError'),
+          [{ text: t('ok') }]
+        );
+      } else {
+        Alert.alert(
+          t('weatherError'),
+          t('unableToGetWeather'),
+          [{ text: t('ok') }]
+        );
+      }
+      setWeatherEnabled(false);
+    } finally {
+      setIsLoadingWeather(false);
+    }
+  };
+
   return (
     <KeyboardAvoidingView 
       style={styles.keyboardAvoidingView} 
@@ -424,6 +595,72 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
               </>
             )}
             
+            {/* Location and Weather section */}
+            <Text style={styles.sectionTitle}>{t('additionalContext')}</Text>
+            
+            {/* Location toggle */}
+            <View style={styles.contextRow}>
+              <View style={styles.contextInfo}>
+                <Text style={styles.contextLabel}>{t('addLocation')}</Text>
+                <Text style={styles.contextDescription}>{t('locationDescription')}</Text>
+              </View>
+              <TouchableOpacity 
+                style={[styles.contextButton, locationEnabled && styles.contextButtonActive]}
+                onPress={() => setLocationEnabled(!locationEnabled)}
+                disabled={isLoadingWeather}
+              >
+                {isLoadingWeather ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Text style={styles.contextButtonText}>
+                    {locationEnabled ? t('enabled') : t('disabled')}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+            
+            {locationEnabled && selectedLocation && (
+              <View style={styles.contextDataContainer}>
+                <Text style={styles.contextDataLabel}>{t('currentLocation')}</Text>
+                <Text style={styles.contextDataValue}>{selectedLocation.address}</Text>
+              </View>
+            )}
+            
+            {/* Weather toggle */}
+            <View style={styles.contextRow}>
+              <View style={styles.contextInfo}>
+                <Text style={styles.contextLabel}>{t('addWeather')}</Text>
+                <Text style={styles.contextDescription}>{t('weatherDescription')}</Text>
+              </View>
+              <TouchableOpacity 
+                style={[styles.contextButton, weatherEnabled && styles.contextButtonActive]}
+                onPress={() => setWeatherEnabled(!weatherEnabled)}
+                disabled={isLoadingWeather || !locationEnabled}
+              >
+                {isLoadingWeather ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Text style={styles.contextButtonText}>
+                    {weatherEnabled ? t('enabled') : t('disabled')}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+            
+            {weatherEnabled && weather && (
+              <View style={styles.contextDataContainer}>
+                <Text style={styles.contextDataLabel}>{t('currentWeather')}</Text>
+                <View style={styles.weatherDisplay}>
+                  {weather.icon && (
+                    <Text style={styles.weatherIcon}>{getWeatherEmoji(weather.condition)}</Text>
+                  )}
+                  <Text style={styles.contextDataValue}>
+                    {weather.condition}, {weather.temperature}°C
+                  </Text>
+                </View>
+              </View>
+            )}
+            
             {/* Add padding at the bottom to ensure scroll shows all content */}
             <View style={styles.bottomSpacer} />
           </View>
@@ -452,6 +689,23 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
       </View>
     </KeyboardAvoidingView>
   );
+};
+
+// Helper function to convert weather condition to emoji
+const getWeatherEmoji = (condition) => {
+  const conditionLower = condition ? condition.toLowerCase() : '';
+  
+  if (conditionLower.includes('clear') || conditionLower.includes('sunny')) return '☀️';
+  if (conditionLower.includes('cloud')) return '☁️';
+  if (conditionLower.includes('rain')) return '🌧️';
+  if (conditionLower.includes('storm') || conditionLower.includes('thunder')) return '⛈️';
+  if (conditionLower.includes('snow') || conditionLower.includes('flurr')) return '❄️';
+  if (conditionLower.includes('fog') || conditionLower.includes('mist')) return '🌫️';
+  if (conditionLower.includes('wind')) return '💨';
+  if (conditionLower.includes('haz')) return '⚠️';
+  
+  // Default
+  return '🌡️';
 };
 
 const styles = StyleSheet.create({
@@ -702,6 +956,66 @@ const styles = StyleSheet.create({
     color: '#4CAF50', // Green for maximum
     fontWeight: 'bold',
     fontSize: 14,
+  },
+  contextRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    backgroundColor: 'white',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  contextInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  contextLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  contextDescription: {
+    fontSize: 12,
+    color: '#666',
+  },
+  contextButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: '#ccc',
+  },
+  contextButtonActive: {
+    backgroundColor: '#4CAF50',
+  },
+  contextButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  contextDataContainer: {
+    backgroundColor: '#f0f0f0',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  contextDataLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  contextDataValue: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  weatherDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  weatherIcon: {
+    fontSize: 24,
+    marginRight: 8,
   },
 });
 
