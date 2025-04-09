@@ -1,16 +1,22 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Modal } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Modal, Platform } from 'react-native';
 import { useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import MoodScreen from './src/screens/MoodScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import GlossarScreen from './src/screens/GlossarScreen';
 import { LanguageProvider } from './src/context/LanguageContext';
 import { VisualStyleProvider } from './src/context/VisualStyleContext';
+import { PeopleProvider } from './src/context/PeopleContext';
+import { MemoriesProvider } from './src/context/MemoriesContext';
+import { MoodsProvider } from './src/context/MoodsContext';
+import { PlacesProvider } from './src/context/PlacesContext';
 
 export default function App() {
   const [selectedSection, setSelectedSection] = useState(null);
   const [activeScreen, setActiveScreen] = useState(null);
   const [isAppSettingsVisible, setIsAppSettingsVisible] = useState(false);
+  const [activeTab, setActiveTab] = useState('you');
 
   const sections = [
     { id: 'memories', title: 'Memories', color: '#FF8A65' },
@@ -26,7 +32,6 @@ export default function App() {
   const handleSectionPress = (sectionId) => {
     setSelectedSection(sectionId);
     
-    // Set the active screen based on the selected section
     if (sectionId === 'mood') {
       setActiveScreen('mood');
     } else {
@@ -48,23 +53,69 @@ export default function App() {
     );
   };
 
-  // Back button handler
   const handleBack = () => {
     setActiveScreen(null);
     setSelectedSection(null);
   };
 
-  // Handle opening app settings
   const handleOpenSettings = () => {
     setIsAppSettingsVisible(true);
   };
 
-  // Handle closing app settings
   const handleCloseSettings = () => {
     setIsAppSettingsVisible(false);
   };
 
-  // Render the appropriate screen based on the active screen state
+  const renderMainContent = () => {
+    switch (activeTab) {
+      case 'you':
+        return (
+          <View style={styles.container}>
+            <View style={styles.header}>
+              <Text style={styles.title}>Memoria</Text>
+              <Text style={styles.subtitle}>Your life, all in one place</Text>
+              <TouchableOpacity 
+                style={styles.headerSettingsButton}
+                onPress={handleOpenSettings}
+              >
+                <Text style={styles.headerSettingsIcon}>⚙️</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.scrollView}>
+              <View style={styles.sectionsGrid}>
+                {sections.map((section) => (
+                  <TouchableOpacity
+                    key={section.id}
+                    style={[styles.sectionButton, { backgroundColor: section.color }]}
+                    onPress={() => handleSectionPress(section.id)}
+                  >
+                    <Text style={styles.sectionButtonText}>{section.title}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              
+              {renderPlaceholderContent()}
+            </ScrollView>
+          </View>
+        );
+      case 'world':
+        return (
+          <View style={styles.placeholder}>
+            <Text style={styles.placeholderText}>World content coming soon</Text>
+          </View>
+        );
+      case 'glossar':
+        return (
+          <View style={[styles.glossarContainer, { paddingTop: 0 }]}>
+            <GlossarScreen />
+          </View>
+        );
+      default:
+        return null;
+    }
+  };
+
   const renderScreen = () => {
     if (activeScreen === 'mood') {
       return (
@@ -84,33 +135,34 @@ export default function App() {
     }
     
     return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Memoria</Text>
-          <Text style={styles.subtitle}>Your life, all in one place</Text>
-          <TouchableOpacity 
-            style={styles.headerSettingsButton}
-            onPress={handleOpenSettings}
+      <View style={styles.mainContainer}>
+        <View style={styles.tabsContainer}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'you' && styles.activeTab]}
+            onPress={() => setActiveTab('you')}
           >
-            <Text style={styles.headerSettingsIcon}>⚙️</Text>
+            <Text style={[styles.tabText, activeTab === 'you' && styles.activeTabText]}>
+              You
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'world' && styles.activeTab]}
+            onPress={() => setActiveTab('world')}
+          >
+            <Text style={[styles.tabText, activeTab === 'world' && styles.activeTabText]}>
+              World
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'glossar' && styles.activeTab]}
+            onPress={() => setActiveTab('glossar')}
+          >
+            <Text style={[styles.tabText, activeTab === 'glossar' && styles.activeTabText]}>
+              Glossar
+            </Text>
           </TouchableOpacity>
         </View>
-        
-        <ScrollView style={styles.scrollView}>
-          <View style={styles.sectionsGrid}>
-            {sections.map((section) => (
-              <TouchableOpacity
-                key={section.id}
-                style={[styles.sectionButton, { backgroundColor: section.color }]}
-                onPress={() => handleSectionPress(section.id)}
-              >
-                <Text style={styles.sectionButtonText}>{section.title}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          
-          {renderPlaceholderContent()}
-        </ScrollView>
+        {renderMainContent()}
       </View>
     );
   };
@@ -119,25 +171,32 @@ export default function App() {
     <SafeAreaProvider>
       <LanguageProvider>
         <VisualStyleProvider>
-          <View style={styles.mainContainer}>
-            {renderScreen()}
-            <StatusBar style="auto" />
-            
-            {/* App-level settings modal */}
-            {isAppSettingsVisible && (
-              <Modal
-                visible={isAppSettingsVisible}
-                animationType="slide"
-                transparent={false}
-                onRequestClose={handleCloseSettings}
-                statusBarTranslucent={false}
-              >
-                <SettingsScreen 
-                  onClose={handleCloseSettings}
-                />
-              </Modal>
-            )}
-          </View>
+          <PeopleProvider>
+            <MemoriesProvider>
+              <MoodsProvider>
+                <PlacesProvider>
+                  <View style={styles.mainContainer}>
+                    {renderScreen()}
+                    <StatusBar style="auto" />
+                    
+                    {isAppSettingsVisible && (
+                      <Modal
+                        visible={isAppSettingsVisible}
+                        animationType="slide"
+                        transparent={false}
+                        onRequestClose={handleCloseSettings}
+                        statusBarTranslucent={false}
+                      >
+                        <SettingsScreen 
+                          onClose={handleCloseSettings}
+                        />
+                      </Modal>
+                    )}
+                  </View>
+                </PlacesProvider>
+              </MoodsProvider>
+            </MemoriesProvider>
+          </PeopleProvider>
         </VisualStyleProvider>
       </LanguageProvider>
     </SafeAreaProvider>
@@ -210,7 +269,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     textAlign: 'center',
   },
-  // Screen styles
   screenContainer: {
     flex: 1,
     backgroundColor: '#f5f5f5',
@@ -248,7 +306,38 @@ const styles = StyleSheet.create({
   settingsButton: {
     padding: 8,
   },
-  settingsIcon: {
-    fontSize: 24,
+  tabsContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    paddingTop: Platform.OS === 'ios' ? 50 : 30,
+  },
+  tab: {
+    flex: 1,
+    padding: 16,
+    alignItems: 'center',
+  },
+  activeTab: {
+    borderBottomWidth: 2,
+    borderBottomColor: '#3F51B5',
+  },
+  tabText: {
+    fontSize: 16,
+    color: '#666',
+  },
+  activeTabText: {
+    color: '#3F51B5',
+    fontWeight: 'bold',
+  },
+  placeholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  glossarContainer: {
+    flex: 1, 
+    backgroundColor: '#fff',
+    paddingTop: 0,
   },
 });

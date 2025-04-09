@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Dimensions, SectionList, ScrollView, Animated, Platform } from 'react-native';
 import { useLanguage } from '../context/LanguageContext';
 import { useVisualStyle } from '../context/VisualStyleContext';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker } from 'react-native-maps';
 // Replace imported EMOTIONS with the one defined in MoodScreen
 // import { EMOTIONS } from '../data/models';
 
@@ -522,8 +522,12 @@ const MoodHistory = ({
               contentContainerStyle={{ 
                 paddingBottom: Math.max(20, bottomInset)
               }}
-              onEndReached={onEndReached}
-              onEndReachedThreshold={0.3}
+              onEndReached={() => {
+                console.log('onEndReached triggered');
+                // Remove the section check since we want to load more entries regardless of section
+                onEndReached && onEndReached();
+              }}
+              onEndReachedThreshold={0.2}
               refreshControl={
                 <RefreshControl
                   refreshing={refreshing}
@@ -534,6 +538,14 @@ const MoodHistory = ({
               }
               stickySectionHeadersEnabled={true}
               onViewableItemsChanged={onViewableItemsChanged}
+              initialNumToRender={10}
+              maxToRenderPerBatch={10}
+              windowSize={5}
+              removeClippedSubviews={false}
+              maintainVisibleContentPosition={{
+                minIndexForVisible: 0,
+                autoscrollToTopThreshold: 10,
+              }}
             />
           )}
         </View>

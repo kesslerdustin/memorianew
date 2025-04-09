@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getMoodEntries, initDatabase, resetDatabase } from '../utils/database';
+import { getMoodEntries, initDatabase, resetDatabase } from '../database/database';
 import MoodEntryForm from '../components/MoodEntryForm';
 import MoodHistory from '../components/MoodHistory';
 import QuickMoodEntry from '../components/QuickMoodEntry';
@@ -120,12 +120,15 @@ const MoodScreen = ({ navigation }) => {
   // Function to load mood entries from database
   const loadMoodEntries = async (refresh = false) => {
     if (refresh) {
+      console.log('Refreshing entries, resetting to page 0');
       setIsLoading(true);
       setPage(0);
       setHasMoreEntries(true);
     } else if (!hasMoreEntries) {
+      console.log('No more entries to load');
       return;
     } else if (page > 0) {
+      console.log(`Loading more entries from page ${page}`);
       setIsLoadingMore(true);
     }
 
@@ -134,13 +137,15 @@ const MoodScreen = ({ navigation }) => {
       // Make sure we're getting newest entries first
       const entries = await getMoodEntries(PAGE_SIZE, currentPage * PAGE_SIZE, true);
       
-      console.log(`Loaded ${entries.length} mood entries from database`);
+      console.log(`Loaded ${entries.length} mood entries from database (page ${currentPage})`);
+      console.log('Current total entries:', moodEntries.length);
       
       if (entries.length < PAGE_SIZE) {
+        console.log('No more entries available');
         setHasMoreEntries(false);
       }
       
-      if (refresh || currentPage === 0) {
+      if (refresh) {
         console.log('Replacing mood entries with fresh data');
         setMoodEntries(entries);
       } else {
@@ -148,11 +153,13 @@ const MoodScreen = ({ navigation }) => {
         const existingIds = new Set(moodEntries.map(entry => entry.id));
         const uniqueNewEntries = entries.filter(entry => !existingIds.has(entry.id));
         console.log(`Adding ${uniqueNewEntries.length} new entries to existing ${moodEntries.length}`);
-        setMoodEntries([...moodEntries, ...uniqueNewEntries]);
+        setMoodEntries(prevEntries => [...prevEntries, ...uniqueNewEntries]);
       }
       
       if (!refresh) {
-        setPage(currentPage + 1);
+        const nextPage = currentPage + 1;
+        console.log(`Advancing to page ${nextPage}`);
+        setPage(nextPage);
       }
     } catch (error) {
       console.error('Error loading mood entries:', error);
@@ -165,12 +172,12 @@ const MoodScreen = ({ navigation }) => {
   // Handle saving a new mood entry
   const handleSaveMoodEntry = (newEntry) => {
     // Add to state for immediate feedback
-    setMoodEntries([newEntry, ...moodEntries]);
+    setMoodEntries(prevEntries => [newEntry, ...prevEntries]);
     setIsFormVisible(false);
     setSelectedRating(null);
     setSelectedEmotion(null);
     
-    // Switch to history view and let the useEffect trigger a reload
+    // Switch to history view without triggering a full reload
     setActiveView('history');
   };
 
@@ -211,7 +218,11 @@ const MoodScreen = ({ navigation }) => {
 
   // Handle loading more entries
   const handleLoadMore = () => {
+    console.log('handleLoadMore called');
+    console.log('isLoadingMore:', isLoadingMore);
+    console.log('hasMoreEntries:', hasMoreEntries);
     if (!isLoadingMore && hasMoreEntries) {
+      console.log('Loading more entries...');
       loadMoodEntries();
     }
   };

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ProgressBarAndroid } from 'react-native';
-import { saveMoodEntry, generateId } from '../utils/database';
+import { saveMoodEntry, generateId } from '../database/database';
 
 /**
  * ScientificSurvey component for validated psychological scales

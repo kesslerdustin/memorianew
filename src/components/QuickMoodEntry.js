@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import Slider from '@react-native-community/slider';
-import { saveMoodEntry } from '../utils/database';
+import { saveMoodEntry } from '../database/database';
 import { AntDesign } from '@expo/vector-icons';
 import { useLanguage } from '../context/LanguageContext';
 import { useVisualStyle, VISUAL_STYLES, getRatingColor } from '../context/VisualStyleContext';

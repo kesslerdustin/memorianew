@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, Alert } f
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../context/LanguageContext';
 import { useVisualStyle } from '../context/VisualStyleContext';
-import { resetDatabase, generateMockData } from '../utils/database';
+import { resetDatabase, generateMockData } from '../database/database';
 
 const MoodSettingsScreen = ({ onClose }) => {
   const { t, changeLanguage, currentLanguage } = useLanguage();

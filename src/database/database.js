@@ -671,6 +671,7 @@ export async function getMoodEntries(limit = 20, offset = 0, newestFirst = true)
   }
   
   try {
+    console.log(`Fetching mood entries with limit ${limit}, offset ${offset}`);
     // Get entries with tags and activities
     const result = await db.getAllAsync(`
       SELECT 
@@ -683,6 +684,8 @@ export async function getMoodEntries(limit = 20, offset = 0, newestFirst = true)
         e.entry_time ${newestFirst ? 'DESC' : 'ASC'}
       LIMIT ? OFFSET ?
     `, [limit, offset]);
+    
+    console.log(`Database returned ${result.length} entries`);
     
     const entries = [];
     

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
-import { getMoodEntries, getDatabaseStats } from '../utils/database';
+import { getMoodEntries, getDatabaseStats } from '../database/database';
 import { EMOTIONS, ACTIVITY_CATEGORIES } from '../data/models';
 import { useLanguage } from '../context/LanguageContext';
 
