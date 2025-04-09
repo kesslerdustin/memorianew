@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { ACTIVITY_CATEGORIES } from '../data/models';
 import { useLanguage } from '../context/LanguageContext';
 import { useVisualStyle } from '../context/VisualStyleContext';
+import { usePeople } from '../context/PeopleContext';
 
 // Use the same EMOTIONS definition as in MoodScreen.js
 const EMOTIONS = [
@@ -23,9 +24,31 @@ const EMOTIONS = [
 const MoodEntryDetail = ({ entry, onClose, bottomInset = 0, topInset = 0, getTranslatedEmotion, getMoodIcon }) => {
   const { t } = useLanguage();
   const localVisualStyle = useVisualStyle();
+  const { people, getPeopleById } = usePeople();
+  const [associatedPeople, setAssociatedPeople] = useState([]);
   
   // Use provided visual style helpers or fallback to context
   const actualGetMoodIcon = getMoodIcon || localVisualStyle.getMoodIcon;
+
+  useEffect(() => {
+    // Load associated people
+    if (entry && entry.people && Array.isArray(entry.people) && entry.people.length > 0) {
+      if (getPeopleById) {
+        // Use the context function if available
+        const peopleData = getPeopleById(entry.people);
+        setAssociatedPeople(peopleData);
+      } else {
+        // Fallback to manual lookup
+        const peopleData = entry.people.map(personId => {
+          const person = people.find(p => p.id === personId);
+          return person || { id: personId, name: 'Unknown Person' };
+        });
+        setAssociatedPeople(peopleData);
+      }
+    } else {
+      setAssociatedPeople([]);
+    }
+  }, [entry, people]);
 
   if (!entry) return null;
 
@@ -66,6 +89,27 @@ const MoodEntryDetail = ({ entry, onClose, bottomInset = 0, topInset = 0, getTra
       5: '#4CAF50', // Green
     };
     return colors[rating] || '#FFD54F';
+  };
+
+  // Render people section
+  const renderPeopleSection = () => {
+    if (!associatedPeople || associatedPeople.length === 0) {
+      return null;
+    }
+
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>{t('peopleWithYou') || 'People With You'}</Text>
+        <View style={styles.peopleList}>
+          {associatedPeople.map(person => (
+            <View key={person.id} style={styles.personItem}>
+              <Text style={styles.personEmoji}>👤</Text>
+              <Text style={styles.personName}>{safeRender(person.name)}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    );
   };
 
   // Safe render for activities section
@@ -180,6 +224,9 @@ const MoodEntryDetail = ({ entry, onClose, bottomInset = 0, topInset = 0, getTra
           </View>
         ) : null}
         
+        {/* People Section */}
+        {renderPeopleSection()}
+
         {/* Location Information */}
         {entry.location ? (
           <View style={styles.section}>
@@ -244,6 +291,28 @@ const MoodEntryDetail = ({ entry, onClose, bottomInset = 0, topInset = 0, getTra
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t('socialContext')}</Text>
             <Text style={styles.sectionContent}>{safeRender(entry.socialContext)}</Text>
+          </View>
+        ) : null}
+
+        {/* Linked Food Entries */}
+        {entry.related && entry.related.food && entry.related.food.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t('linkedFoods') || 'Linked Foods'}</Text>
+            {entry.related.food.map((food, index) => (
+              <View key={`food-${index}`} style={styles.linkedItem}>
+                <Text style={styles.linkedItemTitle}>{safeRender(food.name)}</Text>
+                {food.meal_type && (
+                  <Text style={styles.linkedItemSubtitle}>
+                    {safeRender(food.meal_type)}
+                  </Text>
+                )}
+                {food.calories && (
+                  <Text style={styles.linkedItemDetail}>
+                    {safeRender(food.calories)} kcal
+                  </Text>
+                )}
+              </View>
+            ))}
           </View>
         ) : null}
 
@@ -397,7 +466,50 @@ const styles = StyleSheet.create({
   errorText: {
     color: '#B00020',
     fontStyle: 'italic',
-  }
+  },
+  linkedItem: {
+    marginBottom: 12,
+    backgroundColor: '#f0f0f0',
+    padding: 12,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#4CAF50',
+  },
+  linkedItemTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 4,
+  },
+  linkedItemSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 2,
+  },
+  linkedItemDetail: {
+    fontSize: 14,
+    color: '#333',
+  },
+  peopleList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
+  },
+  personItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    padding: 8,
+    margin: 4,
+    borderRadius: 20,
+  },
+  personEmoji: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  personName: {
+    fontSize: 14,
+  },
 });
 
 export default MoodEntryDetail; 

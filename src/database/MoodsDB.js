@@ -9,6 +9,9 @@ import * as SQLite from 'expo-sqlite';
 import * as FileSystem from 'expo-file-system';
 import { Asset } from 'expo-asset';
 
+// Import the UnifiedDB functions
+import { saveMoodEntryWithReferences as saveMoodWithRefs, getFoodHistoryForMood } from './UnifiedDB';
+
 // Database connection
 let db = null;
 
@@ -492,169 +495,128 @@ function validateMoodEntry(entry) {
  * @returns {Promise<Object>} Saved mood entry object
  */
 export async function saveMoodEntry(moodEntry) {
-  if (!db) {
-    await initDatabase();
-  }
-  
-  // Create a complete entry with all required fields
-  const entryWithTimestamps = {
-    id: moodEntry.id || generateId(),
-    entry_time: moodEntry.entry_time ? Number(moodEntry.entry_time) : Date.now(), // Ensure it's a number and always has a value
-    rating: moodEntry.rating || 3, // Default to neutral
-    emotion: moodEntry.emotion || "neutral", // Default emotion
-    notes: moodEntry.notes || "",
-    location: moodEntry.location || null,
-    socialContext: moodEntry.socialContext || null,
-    weather: moodEntry.weather || null,
-    tags: moodEntry.tags || [],
-    activities: moodEntry.activities || {},
-    created_at: getTimestamp(),
-    updated_at: getTimestamp(),
-    // Add metadata for weather and location if available
-    weatherData: moodEntry.weatherData || null,
-    locationData: moodEntry.locationData || null
-  };
-  
-  // Validate that this entry has all required fields
-  const validationError = validateMoodEntry(entryWithTimestamps);
-  if (validationError) {
-    const error = new Error(`Invalid mood entry: ${validationError}`);
-    console.error('Validation failed:', error);
-    console.error('Mood entry data:', entryWithTimestamps);
-    throw error;
-  }
+  await initDatabase();
   
   try {
-    console.log("Saving mood entry with entry_time:", entryWithTimestamps.entry_time);
+    // Validate the entry
+    validateMoodEntry(moodEntry);
     
-    // Use parameterized query to avoid SQL injection
+    // Set created_at and updated_at timestamps
+    const currentTime = new Date().toISOString();
+    
+    // Prepare the data for insertion
+    const entryData = {
+      id: moodEntry.id || generateId(),
+      entry_time: moodEntry.entry_time || Date.now(),
+      rating: moodEntry.rating,
+      emotion: moodEntry.emotion,
+      notes: moodEntry.notes || null,
+      location: moodEntry.location || null,
+      social_context: moodEntry.socialContext || null,
+      weather: moodEntry.weather || null,
+      created_at: currentTime,
+      updated_at: currentTime
+    };
+    
+    // Insert the mood entry
     await db.runAsync(
       `INSERT INTO mood_entries (
-        id, entry_time, rating, emotion, notes, location, social_context, weather, created_at, updated_at
+        id, entry_time, rating, emotion, notes, location, social_context, weather, 
+        created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        entryWithTimestamps.id,
-        entryWithTimestamps.entry_time,
-        entryWithTimestamps.rating,
-        entryWithTimestamps.emotion,
-        entryWithTimestamps.notes,
-        entryWithTimestamps.location,
-        entryWithTimestamps.socialContext,
-        entryWithTimestamps.weather,
-        entryWithTimestamps.created_at,
-        entryWithTimestamps.updated_at
+        entryData.id,
+        entryData.entry_time,
+        entryData.rating,
+        entryData.emotion,
+        entryData.notes,
+        entryData.location,
+        entryData.social_context,
+        entryData.weather,
+        entryData.created_at,
+        entryData.updated_at
       ]
     );
     
-    // Now that the entry is definitely created, add tags if any
-    if (entryWithTimestamps.tags && entryWithTimestamps.tags.length > 0) {
-      for (const tag of entryWithTimestamps.tags) {
-        if (tag && tag.trim() !== '') {
-          try {
-            console.log("Inserting tag:", tag, "for mood entry:", entryWithTimestamps.id);
-            const tagId = generateId();
-            await db.runAsync(
-              `INSERT INTO mood_tags (id, mood_id, tag_name) VALUES (?, ?, ?)`,
-              [tagId, entryWithTimestamps.id, tag.trim()]
-            );
-          } catch (tagError) {
-            console.error('Error inserting tag:', tagError);
-            // Continue with other tags even if one fails
+    // Save tags if provided
+    if (moodEntry.tags && Array.isArray(moodEntry.tags) && moodEntry.tags.length > 0) {
+      for (const tag of moodEntry.tags) {
+        await db.runAsync(
+          `INSERT INTO mood_tags (id, mood_id, tag_name) VALUES (?, ?, ?)`,
+          [generateId(), entryData.id, tag]
+        );
+      }
+    }
+    
+    // Save activities if provided
+    if (moodEntry.activities && typeof moodEntry.activities === 'object') {
+      for (const activityType in moodEntry.activities) {
+        if (Object.prototype.hasOwnProperty.call(moodEntry.activities, activityType)) {
+          const activities = moodEntry.activities[activityType];
+          if (Array.isArray(activities)) {
+            for (const activity of activities) {
+              await db.runAsync(
+                `INSERT INTO mood_activities (id, mood_id, activity_type, activity_name) 
+                VALUES (?, ?, ?, ?)`,
+                [generateId(), entryData.id, activityType, activity]
+              );
+            }
           }
         }
       }
     }
     
-    // Add activities if any
-    if (entryWithTimestamps.activities && Object.keys(entryWithTimestamps.activities).length > 0) {
-      for (const [type, name] of Object.entries(entryWithTimestamps.activities)) {
-        if (type && name) {
-          try {
-            console.log("Inserting activity:", type, name, "for mood entry:", entryWithTimestamps.id);
-            const activityId = generateId();
-            await db.runAsync(
-              `INSERT INTO mood_activities (id, mood_id, activity_type, activity_name) VALUES (?, ?, ?, ?)`,
-              [activityId, entryWithTimestamps.id, type, name]
-            );
-          } catch (activityError) {
-            console.error('Error inserting activity:', activityError);
-            // Continue with other activities even if one fails
-          }
-        }
-      }
+    // Save location data if provided
+    if (moodEntry.locationData) {
+      await saveMetadata(
+        entryData.id, 
+        'location_data', 
+        JSON.stringify(moodEntry.locationData)
+      );
     }
     
-    // Save additional weather and location metadata if provided
-    if (entryWithTimestamps.weatherData || entryWithTimestamps.locationData) {
-      try {
-        // Create metadata table if it doesn't exist
-        await db.execAsync(`
-          CREATE TABLE IF NOT EXISTS mood_entry_metadata (
-            id TEXT PRIMARY KEY,
-            mood_id TEXT NOT NULL,
-            metadata_type TEXT NOT NULL,
-            metadata_value TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (mood_id) REFERENCES mood_entries (id) 
-              ON DELETE CASCADE
-          );
-        `);
-        
-        // Store weather data
-        if (entryWithTimestamps.weatherData) {
-          const weatherMetadataId = generateId();
-          await db.runAsync(
-            `INSERT INTO mood_entry_metadata (id, mood_id, metadata_type, metadata_value, created_at) 
-             VALUES (?, ?, ?, ?, ?)`,
-            [
-              weatherMetadataId,
-              entryWithTimestamps.id,
-              'weather',
-              JSON.stringify(entryWithTimestamps.weatherData),
-              getTimestamp()
-            ]
-          );
-        }
-        
-        // Store location data
-        if (entryWithTimestamps.locationData) {
-          const locationMetadataId = generateId();
-          await db.runAsync(
-            `INSERT INTO mood_entry_metadata (id, mood_id, metadata_type, metadata_value, created_at) 
-             VALUES (?, ?, ?, ?, ?)`,
-            [
-              locationMetadataId,
-              entryWithTimestamps.id,
-              'location',
-              JSON.stringify(entryWithTimestamps.locationData),
-              getTimestamp()
-            ]
-          );
-        }
-      } catch (metadataError) {
-        console.error('Error storing metadata:', metadataError);
-        // Proceed even if metadata saving fails
-      }
+    // Save weather data if provided
+    if (moodEntry.weatherData) {
+      await saveMetadata(
+        entryData.id, 
+        'weather_data', 
+        JSON.stringify(moodEntry.weatherData)
+      );
     }
     
-    return entryWithTimestamps;
+    // Save people data if provided
+    if (moodEntry.people && Array.isArray(moodEntry.people) && moodEntry.people.length > 0) {
+      await saveMetadata(
+        entryData.id,
+        'people_data',
+        JSON.stringify(moodEntry.people)
+      );
+    }
+    
+    return entryData.id;
   } catch (error) {
     console.error('Error saving mood entry:', error);
-    if (error.message) {
-      console.error('Error message:', error.message);
-    }
-    if (error.cause) {
-      console.error('Error cause:', error.cause);
-    }
-    console.error('Failed entry data:', {
-      id: entryWithTimestamps.id,
-      entry_time: entryWithTimestamps.entry_time,
-      entry_time_type: typeof entryWithTimestamps.entry_time,
-      rating: entryWithTimestamps.rating,
-      emotion: entryWithTimestamps.emotion,
-      notes: entryWithTimestamps.notes
-    });
     throw error;
+  }
+}
+
+// Helper function to save metadata
+async function saveMetadata(moodId, metadataType, metadataValue) {
+  try {
+    await db.runAsync(
+      `INSERT INTO mood_entry_metadata (id, mood_id, metadata_type, metadata_value, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        generateId(),
+        moodId,
+        metadataType,
+        metadataValue,
+        new Date().toISOString()
+      ]
+    );
+  } catch (error) {
+    console.error(`Error saving ${metadataType} metadata:`, error);
+    // Don't throw to allow the mood entry to be saved even if metadata fails
   }
 }
 
@@ -1065,4 +1027,63 @@ export async function getDatabaseStats() {
     console.error('Error getting database stats:', error);
     throw error;
   }
+}
+
+/**
+ * Save a mood entry with cross-database references
+ * @param {Object} moodEntry - Mood entry data
+ * @returns {Promise<Object>} Saved mood entry object with ID
+ */
+export async function saveMoodEntryWithReferences(moodEntry) {
+  return await saveMoodWithRefs(moodEntry);
+}
+
+/**
+ * Get mood entries with related entities
+ * @param {number} limit - Maximum number of entries to retrieve
+ * @param {number} offset - Starting offset for pagination
+ * @param {boolean} newestFirst - Sort by newest first
+ * @returns {Promise<Array>} Mood entries with related entities
+ */
+export async function getMoodEntriesWithRelated(limit = 20, offset = 0, newestFirst = true) {
+  const moodEntries = await getMoodEntries(limit, offset, newestFirst);
+  
+  // For each mood entry, enhance with related entities and metadata
+  const enhancedEntries = await Promise.all(moodEntries.map(async (entry) => {
+    try {
+      // Get related food entries
+      const relatedFoods = await getFoodHistoryForMood(entry.id);
+      
+      // Get people data from metadata
+      let people = [];
+      try {
+        const peopleMetadata = await db.getAllAsync(
+          `SELECT metadata_value FROM mood_entry_metadata 
+           WHERE mood_id = ? AND metadata_type = 'people_data'`,
+          [entry.id]
+        );
+        
+        if (peopleMetadata && peopleMetadata.length > 0) {
+          people = JSON.parse(peopleMetadata[0].metadata_value);
+        }
+      } catch (peopleError) {
+        console.error('Error fetching people data for mood entry:', peopleError);
+      }
+      
+      return {
+        ...entry,
+        relatedFoods,
+        people: people || []
+      };
+    } catch (error) {
+      console.error('Error enhancing mood entry with related data:', error);
+      return {
+        ...entry,
+        relatedFoods: [],
+        people: []
+      };
+    }
+  }));
+  
+  return enhancedEntries;
 }

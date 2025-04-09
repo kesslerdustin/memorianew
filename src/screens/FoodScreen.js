@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, ActivityIndicator, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, ActivityIndicator, Alert, ScrollView, DeviceEventEmitter } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../context/LanguageContext';
 import { useVisualStyle } from '../context/VisualStyleContext';
@@ -50,6 +50,26 @@ const FoodScreen = ({ navigation }) => {
     return meal ? meal.emoji : '🍽️';
   };
 
+  // Add event listener for database reset
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('DATABASE_RESET', () => {
+      console.log('FoodScreen: Received DATABASE_RESET event');
+      // Clear any cached food entries first
+      if (typeof foodEntries.splice === 'function') {
+        foodEntries.splice(0, foodEntries.length);
+      }
+      
+      // Add a small delay before reloading to ensure database is ready
+      setTimeout(() => {
+        loadFoodEntries();
+      }, 500);
+    });
+    
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   // Reload entries when switching to history view
   useEffect(() => {
     if (activeView === 'history') {
@@ -60,6 +80,8 @@ const FoodScreen = ({ navigation }) => {
   // Handle saving a new food entry
   const handleSaveFoodEntry = async (newEntry) => {
     try {
+      // Now using the enhanced addFoodEntry that maintains cross-database relationships
+      // (Foods with moods will appear in mood history, foods with places will link to places, etc.)
       await addFoodEntry(newEntry);
       setIsFormVisible(false);
       

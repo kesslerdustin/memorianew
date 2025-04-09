@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import Slider from '@react-native-community/slider';
-import { saveMoodEntry } from '../database/MoodsDB';
+import { addMood } from '../services/DatabaseService';
 import { AntDesign } from '@expo/vector-icons';
 import { useLanguage } from '../context/LanguageContext';
 import { useVisualStyle, VISUAL_STYLES, getRatingColor } from '../context/VisualStyleContext';
@@ -84,7 +84,8 @@ const QuickMoodEntry = ({ onMoodAdded, onDetailedEntry, visualStyle, getMoodIcon
     setSubmitting(true);
     try {
       const currentTime = Date.now();
-      const newEntry = await saveMoodEntry({
+      // Use the enhanced function that maintains cross-database relationships
+      const newEntry = {
         rating: selectedRating,
         emotion: selectedEmotion,
         notes: '',
@@ -92,14 +93,16 @@ const QuickMoodEntry = ({ onMoodAdded, onDetailedEntry, visualStyle, getMoodIcon
         timestamp: new Date(currentTime),
         activities: {},
         tags: []
-      });
+      };
+      
+      const savedEntryId = await addMood(newEntry);
       
       // Reset selection
       setSelectedRating(null);
       setSelectedEmotion(null);
       
       if (onMoodAdded) {
-        onMoodAdded(newEntry);
+        onMoodAdded({...newEntry, id: savedEntryId});
       }
     } catch (error) {
       console.error('Error saving mood:', error);

@@ -1,5 +1,8 @@
 import * as SQLite from 'expo-sqlite';
 
+// Import the UnifiedDB functions
+import { saveFoodEntryWithReferences, createRelationship, getMoodHistoryForFood } from './UnifiedDB';
+
 // Database connection
 let db = null;
 
@@ -262,4 +265,33 @@ export const getFoodEntriesByDate = async (startDate, endDate) => {
     console.error('Error getting food entries by date:', error);
     throw error;
   }
+};
+
+// Enhanced version of addFoodEntry that maintains cross-database references
+export const addFoodEntryWithReferences = async (foodEntry) => {
+  return await saveFoodEntryWithReferences(foodEntry);
+};
+
+// Enhanced version of getAllFoodEntries that includes related entities
+export const getAllFoodEntriesWithRelated = async (limit = 100, offset = 0, descending = true) => {
+  const foodEntries = await getAllFoodEntries(limit, offset, descending);
+  
+  // For each food entry, fetch related moods
+  const enhancedEntries = await Promise.all(foodEntries.map(async (entry) => {
+    try {
+      const relatedMoods = await getMoodHistoryForFood(entry.id);
+      return {
+        ...entry,
+        relatedMoods
+      };
+    } catch (error) {
+      console.error('Error fetching related moods for food entry:', error);
+      return {
+        ...entry,
+        relatedMoods: []
+      };
+    }
+  }));
+  
+  return enhancedEntries;
 }; 

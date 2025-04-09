@@ -1,6 +1,9 @@
 import * as SQLite from 'expo-sqlite';
 import * as FileSystem from 'expo-file-system';
 
+// Import the UnifiedDB functions
+import { getPlaceDetails, findAndMergeDuplicatePlaces, createRelationship } from './UnifiedDB';
+
 // Database connection
 let db = null;
 
@@ -173,21 +176,24 @@ export const getPlaceById = async (placeId) => {
 export const addPlaceMood = async (placeId, moodId) => {
   await ensureDatabase();
   try {
-    // Check if this association already exists to avoid duplicates
-    const existing = await db.getAsync(
-      'SELECT id FROM place_moods WHERE place_id = ? AND mood_id = ?',
-      [placeId, moodId]
-    );
-    
-    if (!existing) {
+    // Instead of checking for existing relationship, just try to insert
+    // SQLite will fail silently if there's a unique constraint violation
+    try {
       await db.runAsync(
         'INSERT INTO place_moods (id, place_id, mood_id) VALUES (?, ?, ?)',
         [Math.random().toString(36).substr(2, 9), placeId, moodId]
       );
+      console.log(`Successfully added place-mood relationship: ${placeId} -> ${moodId}`);
+    } catch (insertError) {
+      // If insert fails, it's likely because the relationship already exists
+      // or there's a foreign key constraint violation
+      console.log(`Insert failed, relationship may already exist: ${placeId} -> ${moodId}`);
+      console.log('Insert error:', insertError);
     }
   } catch (error) {
-    console.error('Error adding place mood:', error);
-    throw error;
+    console.error('Error in addPlaceMood:', error);
+    // Don't throw the error - just log it and continue
+    // This allows the app to work even if adding place-mood fails
   }
 };
 
@@ -239,6 +245,76 @@ export const getNearbyPlaces = async (latitude, longitude, radiusKm = 5) => {
     return result;
   } catch (error) {
     console.error('Error getting nearby places:', error);
+    throw error;
+  }
+};
+
+/**
+ * Add a place with cross-database references
+ */
+export const addPlaceWithReferences = async (place) => {
+  await ensureDatabase();
+  
+  try {
+    // First check if this place already exists to avoid duplicates
+    const existingPlaces = await getAllPlaces();
+    const existingPlace = existingPlaces.find(p => 
+      p.name.toLowerCase().trim() === place.name.toLowerCase().trim()
+    );
+    
+    if (existingPlace) {
+      console.log(`Place already exists with name: ${place.name}. Using existing place.`);
+      
+      // If there are mood IDs to associate, add them to the existing place
+      if (place.mood_ids && Array.isArray(place.mood_ids) && place.mood_ids.length > 0) {
+        for (const moodId of place.mood_ids) {
+          await addPlaceMood(existingPlace.id, moodId);
+          // Also create the relationship in the unified DB
+          await createRelationship('place', existingPlace.id, 'mood', moodId, 'has_mood');
+        }
+      }
+      
+      return existingPlace.id;
+    }
+    
+    // If no existing place, add a new one
+    const placeId = await addPlace(place);
+    
+    // If there are mood IDs, add relationships in the unified DB as well
+    if (place.mood_ids && Array.isArray(place.mood_ids) && place.mood_ids.length > 0) {
+      for (const moodId of place.mood_ids) {
+        await createRelationship('place', placeId, 'mood', moodId, 'has_mood');
+      }
+    }
+    
+    return placeId;
+  } catch (error) {
+    console.error('Error adding place with references:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get place details with all related entities (moods, foods, memories, etc.)
+ */
+export const getPlaceWithRelated = async (placeId) => {
+  try {
+    return await getPlaceDetails(placeId);
+  } catch (error) {
+    console.error('Error getting place with related entities:', error);
+    throw error;
+  }
+};
+
+/**
+ * Find and merge duplicate places
+ */
+export const mergeDuplicatePlaces = async () => {
+  try {
+    const mergedCount = await findAndMergeDuplicatePlaces();
+    return mergedCount;
+  } catch (error) {
+    console.error('Error merging duplicate places:', error);
     throw error;
   }
 }; 

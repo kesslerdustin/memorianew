@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Modal, Platform } from 'react-native';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import MoodScreen from './src/screens/MoodScreen';
 import FoodScreen from './src/screens/FoodScreen';
@@ -13,12 +13,37 @@ import { MemoriesProvider } from './src/context/MemoriesContext';
 import { MoodsProvider } from './src/context/MoodsContext';
 import { PlacesProvider } from './src/context/PlacesContext';
 import { FoodProvider } from './src/context/FoodContext';
+import { initDatabase, cleanupDuplicatePlaces } from './src/services/DatabaseService';
 
 export default function App() {
   const [selectedSection, setSelectedSection] = useState(null);
   const [activeScreen, setActiveScreen] = useState(null);
   const [isAppSettingsVisible, setIsAppSettingsVisible] = useState(false);
   const [activeTab, setActiveTab] = useState('you');
+  const [isLoading, setIsLoading] = useState(true);
+  const [initError, setInitError] = useState(null);
+
+  // Initialize databases when app starts
+  useEffect(() => {
+    async function initializeApp() {
+      try {
+        console.log('Initializing database...');
+        await initDatabase();
+        console.log('Database initialized successfully');
+        
+        // Clean up duplicate places
+        await cleanupDuplicatePlaces();
+        console.log('Cleaned up duplicate places');
+      } catch (error) {
+        console.error('Error initializing app:', error);
+        setInitError(error.message);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    
+    initializeApp();
+  }, []);
 
   const sections = [
     { id: 'memories', title: 'Memories', color: '#FF8A65' },
@@ -185,6 +210,16 @@ export default function App() {
       </View>
     );
   };
+
+  // Add loading screen
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.loadingText}>Loading Memoria...</Text>
+        {initError && <Text style={styles.errorText}>Error: {initError}</Text>}
+      </View>
+    );
+  }
 
   return (
     <SafeAreaProvider>
@@ -360,5 +395,19 @@ const styles = StyleSheet.create({
     flex: 1, 
     backgroundColor: '#fff',
     paddingTop: 0,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  errorText: {
+    color: 'red',
+    fontSize: 16,
   },
 });

@@ -1,7 +1,10 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { initFoodDB, addFoodEntry as dbAddFoodEntry, updateFoodEntry as dbUpdateFoodEntry, 
-  deleteFoodEntry as dbDeleteFoodEntry, getAllFoodEntries as dbGetAllFoodEntries, 
-  getFoodEntriesByDate as dbGetFoodEntriesByDate } from '../database/FoodDB';
+import { DeviceEventEmitter } from 'react-native';
+import { 
+  initDatabase,
+  addFood,
+  getFoodsWithRelated
+} from '../services/DatabaseService';
 
 const FoodContext = createContext();
 
@@ -14,7 +17,7 @@ export const FoodProvider = ({ children }) => {
   useEffect(() => {
     const initialize = async () => {
       try {
-        await initFoodDB();
+        await initDatabase();
         setIsInitialized(true);
         await loadFoodEntries();
       } catch (error) {
@@ -25,6 +28,25 @@ export const FoodProvider = ({ children }) => {
 
     initialize();
   }, []);
+  
+  // Listen for database reset events
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('DATABASE_RESET', () => {
+      console.log('FoodContext: Received DATABASE_RESET event');
+      // Clear state first
+      setFoodEntries([]);
+      setIsLoading(true);
+      
+      // Add a delay before reloading to ensure database is ready
+      setTimeout(() => {
+        loadFoodEntries(true);
+      }, 1000);
+    });
+    
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   // Load food entries from database
   const loadFoodEntries = async (refresh = false) => {
@@ -33,7 +55,7 @@ export const FoodProvider = ({ children }) => {
     }
 
     try {
-      const entries = await dbGetAllFoodEntries();
+      const entries = await getFoodsWithRelated();
       console.log(`Loaded ${entries.length} food entries from database`);
       setFoodEntries(entries);
     } catch (error) {
@@ -66,8 +88,12 @@ export const FoodProvider = ({ children }) => {
         restaurant_name: entryData.restaurant_name || null
       };
 
-      await dbAddFoodEntry(newEntry);
-      setFoodEntries(prevEntries => [newEntry, ...prevEntries]);
+      // Use enhanced function that maintains cross-database references
+      await addFood(newEntry);
+      
+      // Reload food entries to get the updated data with relationships
+      await loadFoodEntries();
+      
       return newEntry;
     } catch (error) {
       console.error('Error adding food entry:', error);
@@ -97,11 +123,12 @@ export const FoodProvider = ({ children }) => {
         restaurant_name: updatedData.restaurant_name !== undefined ? updatedData.restaurant_name : entryToUpdate.restaurant_name
       };
       
-      await dbUpdateFoodEntry(updatedEntry);
+      // We would ideally use an updateFood method from DatabaseService here
+      // For now, we'll reload food entries after the operation to ensure all relationships are fetched
+      await updateFoodEntry(updatedEntry);
       
-      setFoodEntries(prevEntries => 
-        prevEntries.map(item => item.id === entryId ? updatedEntry : item)
-      );
+      // Reload food entries to get the updated data with relationships
+      await loadFoodEntries();
       
       return updatedEntry;
     } catch (error) {
@@ -113,10 +140,12 @@ export const FoodProvider = ({ children }) => {
   // Delete a food entry
   const deleteFoodEntry = async (entryId) => {
     try {
-      await dbDeleteFoodEntry(entryId);
-      setFoodEntries(prevEntries => 
-        prevEntries.filter(item => item.id !== entryId)
-      );
+      // We would ideally use a deleteFood method from DatabaseService here
+      await deleteFoodEntry(entryId);
+      
+      // Reload food entries to get the updated data
+      await loadFoodEntries();
+      
       return entryId;
     } catch (error) {
       console.error('Error deleting food entry:', error);
@@ -126,17 +155,11 @@ export const FoodProvider = ({ children }) => {
 
   // Get entries for a specific date range
   const getEntriesForDateRange = async (startDate, endDate) => {
-    try {
-      const entries = await dbGetFoodEntriesByDate(startDate, endDate);
-      return entries;
-    } catch (error) {
-      console.error('Error getting entries by date range:', error);
-      // Fall back to filtering the current state if DB query fails
-      return foodEntries.filter(entry => {
-        const entryDate = new Date(entry.date);
-        return entryDate >= startDate && entryDate <= endDate;
-      });
-    }
+    // Filter the entries from the state since our enhanced functions already loaded the relationships
+    return foodEntries.filter(entry => {
+      const entryDate = new Date(entry.date);
+      return entryDate >= startDate && entryDate <= endDate;
+    });
   };
 
   // Calculate total calories for a day

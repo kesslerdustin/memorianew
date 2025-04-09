@@ -102,6 +102,10 @@ export const translations = {
     resetConfirmation: 'This will delete all your data. Are you sure?',
     resetSuccess: 'Database has been reset successfully.',
     resetError: 'Failed to reset database. Please try again.',
+    resetAllDatabases: 'Reset All Databases',
+    resetAllDatabasesConfirmation: 'This will delete ALL data from ALL databases. This action cannot be undone. Are you sure you want to continue?',
+    allDatabasesResetSuccess: 'All databases have been successfully reset.',
+    allDatabasesResetError: 'There was an error resetting all databases. Please try again.',
     
     // Surveys
     psychologicalSurveys: 'Psychological Surveys',
@@ -257,6 +261,10 @@ export const translations = {
     resetConfirmation: 'Dies wird alle deine Daten löschen. Bist du sicher?',
     resetSuccess: 'Datenbank wurde erfolgreich zurückgesetzt.',
     resetError: 'Fehler beim Zurücksetzen der Datenbank. Bitte versuche es erneut.',
+    resetAllDatabases: 'Alle Datenbanken zurücksetzen',
+    resetAllDatabasesConfirmation: 'Dies wird ALLE Daten aus ALLEN Datenbanken löschen. Diese Aktion kann nicht rückgängig gemacht werden. Bist du sicher, dass du fortfahren möchtest?',
+    allDatabasesResetSuccess: 'Alle Datenbanken wurden erfolgreich zurückgesetzt.',
+    allDatabasesResetError: 'Beim Zurücksetzen aller Datenbanken ist ein Fehler aufgetreten. Bitte versuche es erneut.',
     
     // Surveys
     psychologicalSurveys: 'Psychologische Umfragen',

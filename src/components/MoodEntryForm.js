@@ -2,15 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView, Switch, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { EMOTIONS, ACTIVITY_CATEGORIES } from '../data/models';
-import { saveMoodEntry, generateId } from '../database/MoodsDB';
+import { generateId } from '../database/MoodsDB';
+import { addMood } from '../services/DatabaseService';
 import { useLanguage } from '../context/LanguageContext';
 import { useVisualStyle, VISUAL_STYLES, getRatingColor } from '../context/VisualStyleContext';
+import { usePeople } from '../context/PeopleContext';
 import * as Location from 'expo-location';
 import { fetchWeatherData } from '../utils/weather';
 
 const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = null, visualStyle, getMoodIcon }) => {
   const { t } = useLanguage();
   const localVisualStyle = useVisualStyle();
+  const { people, addPerson } = usePeople();
   
   // Use provided visual style helpers or fallback to context
   const actualGetMoodIcon = getMoodIcon || localVisualStyle.getMoodIcon;
@@ -34,6 +37,8 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
   const [selectedLocation, setSelectedLocation] = useState(null);
   const [selectedSocialContext, setSelectedSocialContext] = useState(null);
   const [selectedWeather, setSelectedWeather] = useState(null);
+  const [selectedPeople, setSelectedPeople] = useState([]);
+  const [newPersonName, setNewPersonName] = useState('');
   
   // Common tags for context
   const commonTags = [
@@ -93,15 +98,17 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
       let locationString = null;
       let locationData = null;
       
-      if (locationEnabled && selectedLocation) {
+      if (selectedLocation) {
         // Store readable location in main entry
         locationString = selectedLocation.address;
         
         // Store full location data for metadata
         locationData = {
-          latitude: selectedLocation.latitude,
-          longitude: selectedLocation.longitude,
-          address: selectedLocation.address
+          ...selectedLocation,
+          // Ensure these fields exist even if null
+          latitude: selectedLocation.latitude || null,
+          longitude: selectedLocation.longitude || null,
+          locationType: selectedLocation.locationType || 'predefined'
         };
       }
       
@@ -109,7 +116,19 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
       let weatherString = null;
       let weatherData = null;
       
-      if (weatherEnabled && weather) {
+      if (selectedWeather) {
+        // Store readable weather in main entry
+        weatherString = `${selectedWeather}, 20°C`;
+        
+        // Store full weather data for metadata
+        weatherData = {
+          condition: selectedWeather,
+          temperature: 20,
+          description: selectedWeather,
+          timestamp: new Date().toISOString(),
+          source: 'manual'
+        };
+      } else if (weather) {
         // Store readable weather in main entry
         weatherString = `${weather.condition}, ${weather.temperature}°C`;
         
@@ -124,7 +143,8 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
           windSpeed: weather.windSpeed,
           locationName: weather.locationName,
           country: weather.country,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          source: weather.source || 'api'
         };
       }
       
@@ -140,6 +160,8 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
         location: locationString,
         socialContext: selectedSocialContext,
         weather: weatherString,
+        // Add people data
+        people: selectedPeople,
         // Add detailed data for metadata storage
         locationData: locationData,
         weatherData: weatherData
@@ -155,16 +177,18 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
         location: newEntry.location,
         socialContext: newEntry.socialContext,
         weather: newEntry.weather,
+        people: newEntry.people.length,
         hasLocationData: !!newEntry.locationData,
         hasWeatherData: !!newEntry.weatherData
       });
       
-      // Save the entry
-      const savedEntry = await saveMoodEntry(newEntry);
+      // Use the enhanced function that maintains cross-database relationships
+      // (Moods with locations will link to places, mood context will create people, etc.)
+      const savedEntryId = await addMood(newEntry);
       
-      if (savedEntry) {
+      if (savedEntryId) {
         // Call the onSave callback with the new entry
-        onSave && onSave(savedEntry);
+        onSave && onSave({...newEntry, id: savedEntryId});
       } else {
         alert(t('failedToSaveMood'));
       }
@@ -249,7 +273,25 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
   
   // Handle location selection
   const selectLocation = (location) => {
-    setSelectedLocation(location === selectedLocation ? null : location);
+    // If location is a string (from predefined list), convert to object format
+    if (typeof location === 'string') {
+      location = {
+        address: location,
+        latitude: null,
+        longitude: null,
+        locationType: 'predefined'
+      };
+    } else if (location && !location.locationType) {
+      // Add locationType to GPS locations
+      location.locationType = 'gps';
+    }
+    
+    setSelectedLocation(location);
+    
+    // Don't try to reload weather if we already have some
+    if (!weather && !weatherLoading && location && location.latitude && location.longitude) {
+      getWeather(location);
+    }
   };
   
   // Handle social context selection
@@ -258,8 +300,35 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
   };
   
   // Handle weather selection
-  const selectWeather = (weather) => {
-    setSelectedWeather(weather === selectedWeather ? null : weather);
+  const selectWeather = (weatherCondition) => {
+    setSelectedWeather(weatherCondition);
+    
+    // If we're toggling off the current selection, just clear it
+    if (weatherCondition === selectedWeather) {
+      setSelectedWeather(null);
+      return;
+    }
+    
+    // Create weather data if not fetched from API
+    if (!weather) {
+      // Create basic weather data
+      setWeather({
+        condition: weatherCondition,
+        temperature: 20, // Default temperature
+        description: weatherCondition,
+        timestamp: new Date().toISOString(),
+        source: 'manual'
+      });
+    } else {
+      // Update existing weather data
+      setWeather({
+        ...weather,
+        condition: weatherCondition,
+        source: 'manual'
+      });
+    }
+    
+    setWeatherEnabled(true);
   };
   
   // Handle activity selection
@@ -302,10 +371,12 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
     );
   };
 
-  const [locationEnabled, setLocationEnabled] = useState(false);
-  const [weatherEnabled, setWeatherEnabled] = useState(false);
+  const [locationEnabled, setLocationEnabled] = useState(true);
+  const [weatherEnabled, setWeatherEnabled] = useState(true);
   const [weather, setWeather] = useState(null);
   const [isLoadingWeather, setIsLoadingWeather] = useState(false);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherError, setWeatherError] = useState(null);
 
   // Request location permissions when location is enabled
   useEffect(() => {
@@ -370,7 +441,8 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
       setSelectedLocation({
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
-        address: address || t('unknownLocation')
+        address: address || t('unknownLocation'),
+        locationType: 'gps'
       });
     } catch (error) {
       console.error('Error getting location:', error);
@@ -386,44 +458,161 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
   };
 
   // Function to get weather data
-  const getWeather = async () => {
-    if (!selectedLocation) return;
-
-    setIsLoadingWeather(true);
+  const getWeather = async (providedLocation) => {
+    if (weatherLoading) return;
+    
+    setWeatherLoading(true);
+    setWeatherError(null);
     
     try {
-      const weatherData = await fetchWeatherData(selectedLocation.latitude, selectedLocation.longitude);
+      let locationToUse = providedLocation || selectedLocation;
       
-      if (weatherData.isMockData) {
-        Alert.alert(
-          t('weatherNote'),
-          t('usingOfflineWeatherData'),
-          [{ text: t('ok') }]
-        );
+      // If no location provided and no selected location with coordinates, try to get current location
+      if (!locationToUse || !locationToUse.latitude || !locationToUse.longitude) {
+        try {
+          const { coords } = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced
+          });
+          
+          // Get readable address for the coordinates
+          const addressResponse = await Location.reverseGeocodeAsync({
+            latitude: coords.latitude,
+            longitude: coords.longitude
+          });
+
+          let address = t('currentLocation');
+          if (addressResponse && addressResponse.length > 0) {
+            const addressData = addressResponse[0];
+            // Simplify to just city and country if available
+            if (addressData.city) {
+              address = addressData.city;
+              if (addressData.country) {
+                address += `, ${addressData.country}`;
+              }
+            }
+          }
+          
+          locationToUse = {
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+            address: address,
+            locationType: 'gps'
+          };
+          
+          // Update selected location if none was set
+          setSelectedLocation(locationToUse);
+          setLocationEnabled(true);
+        } catch (locError) {
+          console.error('Error getting current location for weather:', locError);
+          setWeatherError(t('locationAccessError') || 'Could not access location');
+          setWeatherLoading(false);
+          return;
+        }
       }
       
-      setWeather(weatherData);
+      // Get weather from API
+      const weatherData = await fetchWeatherData(locationToUse.latitude, locationToUse.longitude);
+      if (weatherData) {
+        // Mark the weather data as coming from the API
+        const apiWeatherData = {
+          ...weatherData,
+          source: 'api'
+        };
+        
+        setWeather(apiWeatherData);
+        // Automatically select the weather condition
+        setSelectedWeather(apiWeatherData.condition);
+        setWeatherEnabled(true);
+      }
     } catch (error) {
-      console.error('Error fetching weather:', error);
-      
-      // Show more specific error for authentication issues
-      if (error.message && error.message.includes('401')) {
-        Alert.alert(
-          t('weatherAPIError'),
-          t('weatherAPIKeyError'),
-          [{ text: t('ok') }]
-        );
-      } else {
-        Alert.alert(
-          t('weatherError'),
-          t('unableToGetWeather'),
-          [{ text: t('ok') }]
-        );
-      }
-      setWeatherEnabled(false);
+      console.error('Error fetching weather data:', error);
+      setWeatherError(error.message || t('weatherFetchError') || 'Error fetching weather data');
     } finally {
-      setIsLoadingWeather(false);
+      setWeatherLoading(false);
     }
+  };
+
+  // Handle selection of a person
+  const togglePersonSelection = (personId) => {
+    if (selectedPeople.includes(personId)) {
+      setSelectedPeople(selectedPeople.filter(id => id !== personId));
+    } else {
+      setSelectedPeople([...selectedPeople, personId]);
+    }
+  };
+  
+  // Handle adding a new person
+  const handleAddNewPerson = async () => {
+    if (!newPersonName || newPersonName.trim() === '') {
+      return;
+    }
+    
+    try {
+      const newPerson = {
+        id: generateId(),
+        name: newPersonName.trim(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      
+      await addPerson(newPerson);
+      
+      // Add the new person to selected people
+      setSelectedPeople([...selectedPeople, newPerson.id]);
+      setNewPersonName('');
+    } catch (error) {
+      console.error('Error adding new person:', error);
+      Alert.alert(t('error'), t('errorAddingPerson'));
+    }
+  };
+
+  // Render people section
+  const renderPeopleSection = () => {
+    return (
+      <View style={styles.fieldSection}>
+        <Text style={styles.fieldLabel}>{t('peopleWithYou') || 'People With You'}</Text>
+        
+        {/* Add new person input */}
+        <View style={styles.addPersonContainer}>
+          <TextInput
+            style={styles.addPersonInput}
+            placeholder={t('addNewPerson') || "Add new person..."}
+            value={newPersonName}
+            onChangeText={setNewPersonName}
+          />
+          <TouchableOpacity
+            style={styles.addPersonButton}
+            onPress={handleAddNewPerson}
+            disabled={!newPersonName.trim()}
+          >
+            <Text style={styles.addPersonButtonText}>+</Text>
+          </TouchableOpacity>
+        </View>
+        
+        {/* Existing people list */}
+        <View style={styles.peopleContainer}>
+          {people.length > 0 ? (
+            <View style={styles.peopleList}>
+              {people.map(person => (
+                <TouchableOpacity
+                  key={person.id}
+                  style={[
+                    styles.personItem,
+                    selectedPeople.includes(person.id) && styles.selectedPerson
+                  ]}
+                  onPress={() => togglePersonSelection(person.id)}
+                >
+                  <Text style={styles.personEmoji}>👤</Text>
+                  <Text style={styles.personName}>{person.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.emptyListText}>{t('noPeople') || 'No people added yet'}</Text>
+          )}
+        </View>
+      </View>
+    );
   };
 
   return (
@@ -477,28 +666,6 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
             
             {showAdvancedOptions && (
               <>
-                {/* Location Selection */}
-                <Text style={styles.sectionTitle}>{t('whereAreYou')}</Text>
-                <View style={styles.tagsContainer}>
-                  {locationOptions.map((location) => (
-                    <TouchableOpacity
-                      key={location}
-                      style={[
-                        styles.tagButton,
-                        selectedLocation === location && styles.selectedTag,
-                      ]}
-                      onPress={() => selectLocation(location)}
-                    >
-                      <Text style={[
-                        styles.tagText,
-                        selectedLocation === location && styles.selectedTagText,
-                      ]}>
-                        {location}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                
                 {/* Social Context Selection */}
                 <Text style={styles.sectionTitle}>{t('whoAreYouWith')}</Text>
                 <View style={styles.tagsContainer}>
@@ -516,29 +683,6 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
                         selectedSocialContext === context && styles.selectedTagText,
                       ]}>
                         {context}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                
-                {/* Weather Selection */}
-                <Text style={styles.sectionTitle}>{t('howIsTheWeather')}</Text>
-                <View style={styles.tagsContainer}>
-                  {weatherOptions.map((weather) => (
-                    <TouchableOpacity
-                      key={weather.label}
-                      style={[
-                        styles.weatherButton,
-                        selectedWeather === weather.label && styles.selectedTag,
-                      ]}
-                      onPress={() => selectWeather(weather.label)}
-                    >
-                      <Text style={styles.weatherEmoji}>{weather.emoji}</Text>
-                      <Text style={[
-                        styles.tagText,
-                        selectedWeather === weather.label && styles.selectedTagText,
-                      ]}>
-                        {weather.label}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -595,71 +739,109 @@ const MoodEntryForm = ({ onSave, onCancel, initialRating = 3, initialEmotion = n
               </>
             )}
             
-            {/* Location and Weather section */}
-            <Text style={styles.sectionTitle}>{t('additionalContext')}</Text>
-            
-            {/* Location toggle */}
-            <View style={styles.contextRow}>
-              <View style={styles.contextInfo}>
-                <Text style={styles.contextLabel}>{t('addLocation')}</Text>
-                <Text style={styles.contextDescription}>{t('locationDescription')}</Text>
-              </View>
-              <TouchableOpacity 
-                style={[styles.contextButton, locationEnabled && styles.contextButtonActive]}
-                onPress={() => setLocationEnabled(!locationEnabled)}
-                disabled={isLoadingWeather}
-              >
-                {isLoadingWeather ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <Text style={styles.contextButtonText}>
-                    {locationEnabled ? t('enabled') : t('disabled')}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-            
-            {locationEnabled && selectedLocation && (
-              <View style={styles.contextDataContainer}>
-                <Text style={styles.contextDataLabel}>{t('currentLocation')}</Text>
-                <Text style={styles.contextDataValue}>{selectedLocation.address}</Text>
-              </View>
-            )}
-            
-            {/* Weather toggle */}
-            <View style={styles.contextRow}>
-              <View style={styles.contextInfo}>
-                <Text style={styles.contextLabel}>{t('addWeather')}</Text>
-                <Text style={styles.contextDescription}>{t('weatherDescription')}</Text>
-              </View>
-              <TouchableOpacity 
-                style={[styles.contextButton, weatherEnabled && styles.contextButtonActive]}
-                onPress={() => setWeatherEnabled(!weatherEnabled)}
-                disabled={isLoadingWeather || !locationEnabled}
-              >
-                {isLoadingWeather ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <Text style={styles.contextButtonText}>
-                    {weatherEnabled ? t('enabled') : t('disabled')}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-            
-            {weatherEnabled && weather && (
-              <View style={styles.contextDataContainer}>
-                <Text style={styles.contextDataLabel}>{t('currentWeather')}</Text>
-                <View style={styles.weatherDisplay}>
-                  {weather.icon && (
-                    <Text style={styles.weatherIcon}>{getWeatherEmoji(weather.condition)}</Text>
+            {/* Locations - Main UI */}
+            <View style={styles.fieldSection}>
+              <Text style={styles.fieldLabel}>{t('location')}</Text>
+              <View style={styles.optionContainer}>
+                {locationOptions.map(option => (
+                  <TouchableOpacity
+                    key={option}
+                    style={[
+                      styles.optionButton,
+                      selectedLocation && selectedLocation.address === option && styles.selectedOption
+                    ]}
+                    onPress={() => selectLocation(option)}
+                  >
+                    <Text style={[
+                      styles.optionText,
+                      selectedLocation && selectedLocation.address === option ? { color: 'white' } : null
+                    ]}>{option}</Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity
+                  style={[
+                    styles.optionButton, 
+                    selectedLocation && selectedLocation.locationType === 'gps' ? styles.selectedOption : styles.specialOption
+                  ]}
+                  onPress={getLocation}
+                  disabled={isLoadingWeather}
+                >
+                  {isLoadingWeather ? (
+                    <ActivityIndicator size="small" color="#333" />
+                  ) : (
+                    <Text style={[
+                      styles.optionText,
+                      selectedLocation && selectedLocation.locationType === 'gps' ? { color: 'white' } : { color: 'white' }
+                    ]}>📍 {t('currentLocation')}</Text>
                   )}
-                  <Text style={styles.contextDataValue}>
-                    {weather.condition}, {weather.temperature}°C
+                </TouchableOpacity>
+              </View>
+              
+              {/* Show currently selected location */}
+              {selectedLocation && (
+                <View style={styles.locationInfo}>
+                  <Text style={styles.locationInfoText}>
+                    {selectedLocation.locationType === 'gps' 
+                      ? `📍 ${selectedLocation.address}` 
+                      : selectedLocation.address}
                   </Text>
                 </View>
+              )}
+            </View>
+            
+            {/* People Section - Add this here */}
+            {renderPeopleSection()}
+            
+            {/* Weather */}
+            <View style={styles.fieldSection}>
+              <Text style={styles.fieldLabel}>{t('weather')}</Text>
+              <View style={styles.optionContainer}>
+                {weatherOptions.map(option => (
+                  <TouchableOpacity
+                    key={option.label}
+                    style={[
+                      styles.optionButton,
+                      selectedWeather === option.label && styles.selectedOption
+                    ]}
+                    onPress={() => selectWeather(option.label)}
+                  >
+                    <Text style={[
+                      styles.optionText,
+                      selectedWeather === option.label ? { color: 'white' } : null
+                    ]}>{option.emoji} {option.label}</Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity
+                  style={[
+                    styles.optionButton, 
+                    weather && weather.source === 'api' ? styles.selectedOption : styles.specialOption
+                  ]}
+                  onPress={() => getWeather()}
+                  disabled={weatherLoading}
+                >
+                  {weatherLoading ? (
+                    <ActivityIndicator size="small" color="#333" />
+                  ) : (
+                    <Text style={[
+                      styles.optionText,
+                      weather && weather.source === 'api' ? { color: 'white' } : { color: 'white' }
+                    ]}>🌤️ {t('currentWeather')}</Text>
+                  )}
+                </TouchableOpacity>
               </View>
-            )}
+              
+              {weatherError && (
+                <Text style={styles.errorText}>{weatherError}</Text>
+              )}
+              
+              {weather && (
+                <View style={styles.weatherInfo}>
+                  <Text style={styles.weatherInfoText}>
+                    {weather.condition}, {weather.temperature !== undefined ? `${weather.temperature}°C` : ''}
+                  </Text>
+                </View>
+              )}
+            </View>
             
             {/* Add padding at the bottom to ensure scroll shows all content */}
             <View style={styles.bottomSpacer} />
@@ -957,65 +1139,130 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 14,
   },
-  contextRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-    backgroundColor: 'white',
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
+  fieldSection: {
+    marginBottom: 16,
   },
-  contextInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
-  contextLabel: {
+  fieldLabel: {
     fontSize: 16,
     fontWeight: 'bold',
-    marginBottom: 4,
+    marginBottom: 8,
   },
-  contextDescription: {
-    fontSize: 12,
-    color: '#666',
+  optionContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 10,
+    paddingVertical: 4,
   },
-  contextButton: {
-    paddingHorizontal: 16,
+  optionButton: {
+    paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: '#ccc',
+    borderRadius: 20,
+    backgroundColor: '#F1F1F1',
+    marginRight: 8,
+    marginBottom: 8,
+    minWidth: 80,
   },
-  contextButtonActive: {
-    backgroundColor: '#4CAF50',
+  selectedOption: {
+    backgroundColor: '#4A90E2',
   },
-  contextButtonText: {
+  optionText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  specialOption: {
+    backgroundColor: '#4A90E2',
+  },
+  addPersonContainer: {
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  addPersonInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 8,
+  },
+  addPersonButton: {
+    backgroundColor: '#FFD54F',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addPersonButtonText: {
+    fontSize: 18,
     color: 'white',
     fontWeight: 'bold',
   },
-  contextDataContainer: {
-    backgroundColor: '#f0f0f0',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
+  peopleContainer: {
+    marginTop: 10,
   },
-  contextDataLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 4,
+  peopleList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
   },
-  contextDataValue: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  weatherDisplay: {
+  personItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    padding: 8,
+    margin: 4,
+    borderRadius: 20,
   },
-  weatherIcon: {
-    fontSize: 24,
-    marginRight: 8,
+  selectedPerson: {
+    backgroundColor: '#FFD54F',
+  },
+  personEmoji: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  personName: {
+    fontSize: 14,
+  },
+  emptyListText: {
+    fontSize: 14,
+    color: '#888',
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  weatherInfo: {
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: '#f0f8ff',
+    borderRadius: 8,
+  },
+  weatherInfoText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  errorText: {
+    marginTop: 8,
+    color: '#d32f2f',
+    fontSize: 14,
+  },
+  selectedLocationInfo: {
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: '#f0f9ff',
+    borderRadius: 8,
+  },
+  selectedLocationText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  locationInfo: {
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: '#f0f9ff',
+    borderRadius: 8,
+  },
+  locationInfoText: {
+    fontSize: 14,
+    color: '#333',
   },
 });
 

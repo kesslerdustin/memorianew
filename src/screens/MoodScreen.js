@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, ActivityIndicator, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, ActivityIndicator, Alert, ScrollView, DeviceEventEmitter } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getMoodEntries, initDatabase, resetDatabase } from '../database/MoodsDB';
+import { resetDatabase } from '../database/MoodsDB';
+import { initDatabase, getMoodsWithRelated } from '../services/DatabaseService';
 import MoodEntryForm from '../components/MoodEntryForm';
 import MoodHistory from '../components/MoodHistory';
 import QuickMoodEntry from '../components/QuickMoodEntry';
@@ -57,6 +58,27 @@ const MoodScreen = ({ navigation }) => {
   const getMoodIndicator = (rating) => {
     return getMoodIcon(rating);
   };
+
+  // Add event listener for database reset
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('DATABASE_RESET', () => {
+      console.log('MoodScreen: Received DATABASE_RESET event');
+      // Clear state first
+      setMoodEntries([]);
+      setPage(0);
+      setHasMoreEntries(true);
+      setIsLoading(true);
+      
+      // Add a small delay before reloading to ensure database is ready
+      setTimeout(() => {
+        loadMoodEntries(true);
+      }, 500);
+    });
+    
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   // Initialize database when component mounts
   useEffect(() => {
@@ -134,8 +156,8 @@ const MoodScreen = ({ navigation }) => {
 
     try {
       const currentPage = refresh ? 0 : page;
-      // Make sure we're getting newest entries first
-      const entries = await getMoodEntries(PAGE_SIZE, currentPage * PAGE_SIZE, true);
+      // Use the enhanced function that includes related entities like foods
+      const entries = await getMoodsWithRelated(PAGE_SIZE, currentPage * PAGE_SIZE, true);
       
       console.log(`Loaded ${entries.length} mood entries from database (page ${currentPage})`);
       console.log('Current total entries:', moodEntries.length);
@@ -329,6 +351,7 @@ const MoodScreen = ({ navigation }) => {
               
               <View style={styles.surveyButtons}>
                 <TouchableOpacity
+                  key="who5-survey"
                   style={styles.surveyButton}
                   onPress={() => {
                     setActiveSurvey('WHO5');
@@ -340,6 +363,7 @@ const MoodScreen = ({ navigation }) => {
                 </TouchableOpacity>
                 
                 <TouchableOpacity
+                  key="panas-survey"
                   style={styles.surveyButton}
                   onPress={() => {
                     setActiveSurvey('PANAS');
@@ -351,6 +375,7 @@ const MoodScreen = ({ navigation }) => {
                 </TouchableOpacity>
                 
                 <TouchableOpacity
+                  key="phq9-survey"
                   style={styles.surveyButton}
                   onPress={() => {
                     setActiveSurvey('PHQ9');

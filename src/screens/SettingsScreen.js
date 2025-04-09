@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, Alert, DeviceEventEmitter } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../context/LanguageContext';
 import { useVisualStyle } from '../context/VisualStyleContext';
 import { resetDatabase, generateMockData } from '../database/MoodsDB';
+import { resetAllDatabases } from '../services/DatabaseService';
 
-const MoodSettingsScreen = ({ onClose }) => {
+const SettingsScreen = ({ onClose }) => {
   const { t, changeLanguage, currentLanguage } = useLanguage();
   const { visualStyle, changeVisualStyle } = useVisualStyle();
   const [isProcessing, setIsProcessing] = useState(false);
@@ -45,6 +46,53 @@ const MoodSettingsScreen = ({ onClose }) => {
               Alert.alert(
                 t('error'),
                 t('databaseResetError'),
+                [{ text: t('ok') }]
+              );
+            } finally {
+              setIsProcessing(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Handle resetting all databases
+  const handleResetAllDatabases = () => {
+    Alert.alert(
+      t('resetAllDatabases') || 'Reset All Databases',
+      t('resetAllDatabasesConfirmation') || 'This will delete ALL data from ALL databases. This action cannot be undone. Are you sure you want to continue?',
+      [
+        { text: t('cancel'), style: 'cancel' },
+        { 
+          text: t('reset'), 
+          style: 'destructive',
+          onPress: async () => {
+            setIsProcessing(true);
+            try {
+              await resetAllDatabases();
+              
+              // Emit an event to notify all screens to reload data
+              DeviceEventEmitter.emit('DATABASE_RESET');
+              
+              Alert.alert(
+                t('success'),
+                t('allDatabasesResetSuccess') || 'All databases have been successfully reset.',
+                [{ 
+                  text: t('ok'),
+                  onPress: () => {
+                    // Delay closing settings screen to ensure database reset completes
+                    setTimeout(() => {
+                      if (onClose) onClose();
+                    }, 1500);
+                  }
+                }]
+              );
+            } catch (error) {
+              console.error('Error resetting all databases:', error);
+              Alert.alert(
+                t('error'),
+                t('allDatabasesResetError') || 'There was an error resetting all databases.',
                 [{ text: t('ok') }]
               );
             } finally {
@@ -218,6 +266,7 @@ const MoodSettingsScreen = ({ onClose }) => {
           {renderButtonOption(t('importData'), () => {})}
           {renderButtonOption(t('generateMockData'), handleGenerateMockData)}
           {renderButtonOption(t('resetDatabase'), handleResetDatabase, true)}
+          {renderButtonOption(t('resetAllDatabases') || 'Reset All Databases', handleResetAllDatabases, true)}
         </View>
 
         {/* About section */}
@@ -365,4 +414,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default MoodSettingsScreen; 
+export default SettingsScreen; 

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { getMoodEntries } from '../database/MoodsDB';
+import { DeviceEventEmitter } from 'react-native';
+import { getMoodsWithRelated } from '../services/DatabaseService';
 
 const MoodsContext = createContext();
 
@@ -10,11 +11,30 @@ export const MoodsProvider = ({ children }) => {
   useEffect(() => {
     loadMoods();
   }, []);
+  
+  // Listen for database reset events
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('DATABASE_RESET', () => {
+      console.log('MoodsContext: Received DATABASE_RESET event');
+      // Clear state first
+      setMoods([]);
+      setLoading(true);
+      
+      // Add a delay before reloading to ensure database is ready
+      setTimeout(() => {
+        loadMoods();
+      }, 1000);
+    });
+    
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   const loadMoods = async () => {
     try {
       // Get mood entries with higher limit to ensure we get all entries
-      const loadedMoods = await getMoodEntries(1000, 0, true);
+      const loadedMoods = await getMoodsWithRelated(1000, 0, true);
       setMoods(loadedMoods);
     } catch (error) {
       console.error('Error loading moods:', error);

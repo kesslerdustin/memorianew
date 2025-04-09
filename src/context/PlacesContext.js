@@ -1,4 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { 
+  getPlacesGlossary, 
+  getPlaceDetails 
+} from '../services/GlossaryService';
+import {
+  addPlace as dbAddPlace,
+  cleanupDuplicatePlaces
+} from '../services/DatabaseService';
 import * as PlacesDB from '../database/PlacesDB';
 
 const PlacesContext = createContext();
@@ -10,7 +18,8 @@ export const PlacesProvider = ({ children }) => {
   const loadPlaces = async () => {
     try {
       setLoading(true);
-      const placesData = await PlacesDB.getAllPlaces();
+      // Use the enhanced function that fetches places with related entities
+      const placesData = await getPlacesGlossary();
       setPlaces(placesData);
     } catch (error) {
       console.error('Error loading places:', error);
@@ -20,7 +29,17 @@ export const PlacesProvider = ({ children }) => {
   };
 
   useEffect(() => {
+    // Initial load of places
     loadPlaces();
+    
+    // Clean up duplicate places when the provider mounts
+    cleanupDuplicatePlaces().then(count => {
+      console.log(`Merged ${count} duplicate places`);
+      if (count > 0) {
+        // Reload places if any duplicates were merged
+        loadPlaces();
+      }
+    });
   }, []);
 
   const addPlace = async (place) => {
@@ -33,7 +52,8 @@ export const PlacesProvider = ({ children }) => {
         updated_at: new Date().toISOString()
       };
       
-      await PlacesDB.addPlace(placeWithId);
+      // Use the enhanced function that maintains cross-database references
+      await dbAddPlace(placeWithId);
       await loadPlaces();
     } catch (error) {
       console.error('Error adding place:', error);
@@ -49,6 +69,7 @@ export const PlacesProvider = ({ children }) => {
         updated_at: new Date().toISOString()
       };
       
+      // Use the original PlacesDB update function for now
       await PlacesDB.updatePlace(updatedPlace);
       await loadPlaces();
     } catch (error) {
@@ -59,6 +80,7 @@ export const PlacesProvider = ({ children }) => {
 
   const deletePlace = async (placeId) => {
     try {
+      // Use the original PlacesDB delete function for now
       await PlacesDB.deletePlace(placeId);
       await loadPlaces();
     } catch (error) {
@@ -69,7 +91,8 @@ export const PlacesProvider = ({ children }) => {
 
   const getPlaceById = async (placeId) => {
     try {
-      return await PlacesDB.getPlaceById(placeId);
+      // Use the enhanced function that fetches a place with all related entities
+      return await getPlaceDetails(placeId);
     } catch (error) {
       console.error('Error getting place by id:', error);
       throw error;

@@ -1,0 +1,106 @@
+# Memoria Project - Database Structure Analysis
+
+## Current Implementation
+
+The current project has implemented several independent databases for different entities:
+
+1. **MoodsDB.js**
+   - Primary entity: Mood entries with ratings, emotions, timestamps
+   - Tracks: tags, activities, metadata, location, social context
+   - Supports: CRUD operations for moods
+
+2. **FoodDB.js**
+   - Primary entity: Food entries with nutritional info
+   - Tracks: food ratings, restaurant info, date, image
+   - Includes integration points: people, place, mood_rating, mood_emotion
+
+3. **PlacesDB.js**
+   - Primary entity: Physical locations with coordinates
+   - Tracks: name, address, coordinates, notes
+   - Has relationship table: place_moods (connects places to moods)
+
+4. **PeopleDB.js**
+   - Primary entity: Person records with details
+   - Tracks: personal info, status, contact details, relationships
+   - Has tags for hobbies and interests
+
+5. **MemoriesDB.js**
+   - Primary entity: Memory records 
+   - Tracks: title, description, date, location
+   - Includes: people (as JSON array), photos (as JSON array)
+
+## Integration Analysis
+
+### Current Integration Points
+- FoodDB has fields for people, place, mood_rating, and mood_emotion
+- PlacesDB has a relationship table (place_moods) linking places to moods
+- MemoriesDB stores people as a JSON array
+
+### Problems in Current Implementation
+
+1. **Separate Databases**: Each entity type uses a separate SQLite database file, making it difficult to maintain referential integrity and perform cross-entity queries.
+
+2. **Inconsistent Foreign Key Implementation**:
+   - Some relationships use proper foreign keys (place_moods table)
+   - Some use JSON arrays (people in memories)
+   - Some use text fields (people/place in food entries)
+
+3. **Missing Cross-References**:
+   - When a mood is added with a place, it's not automatically linked in PlacesDB
+   - When a food entry has people/places/moods, these aren't reflected in other DBs
+   - Memories with people don't update the PeopleDB
+
+4. **No Central Aggregation**:
+   - No way to easily query "all entities related to a place"
+   - No history view showing all moods, foods, memories for a person
+
+5. **Schema Inconsistencies**:
+   - Different databases have different conventions for timestamps
+   - IDs are handled inconsistently (sometimes random, sometimes passed in)
+
+## Recommendations
+
+1. **Unified Database Approach**:
+   - Consider merging all entities into a single SQLite database
+   - Create proper relationship tables instead of JSON arrays
+   - Maintain consistent field naming and data types
+
+2. **Complete Relationship Model**:
+   - Create explicit junction tables for all many-to-many relationships:
+     - memory_people
+     - memory_places
+     - food_people
+     - food_places
+     - food_moods
+     - people_places
+
+3. **Observer Pattern Implementation**:
+   - When entities are modified in one DB, propagate changes to related DBs
+   - Add hooks in each save/update function to update relationship tables
+
+4. **Unified Query Interface**:
+   - Create a higher-level API for cross-database queries
+   - Implement functions like getPlaceHistory(), getPersonTimeline(), getMoodContext()
+
+5. **Glossary Implementation**:
+   - Create a centralized glossary module that aggregates entity data
+   - Provide methods to get all associated entities for any given entity
+
+## Implementation Plan
+
+1. **Short-term Actions**:
+   - Add cross-DB update triggers to maintain references
+   - Create a unified query layer to join data across databases
+   - Implement proper bi-directional linking
+
+2. **Medium-term Refactoring**:
+   - Migrate to a single SQLite database with multiple tables
+   - Standardize schema, timestamps, and ID generation
+   - Create proper junction tables for all relationships
+
+3. **Database Structure Evolution**:
+   - Consider adding new entity types (projects, hobbies, diary entries)
+   - Ensure all new entities follow the relationship pattern
+   - Add metadata tables for extensibility
+
+The current implementation has the basic structure to support your requirements, but needs significant integration work to ensure that when an entity is linked to another (e.g., food with mood), both entities are aware of the relationship and can be queried accordingly. 
